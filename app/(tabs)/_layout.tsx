@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router";
 import {
+  BriefcaseBusiness,
   CalendarDays,
   LayoutDashboard,
   MessageSquare,
@@ -9,11 +10,8 @@ import React from "react";
 import { Platform } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   // Design system colors
   const activeColor = "#FC7B54"; // Brand Orange
   const inactiveColor = "#9CA3AF"; // Gray
@@ -23,6 +21,7 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: activeColor,
         tabBarInactiveTintColor: inactiveColor,
+        tabBarShowLabel: false,
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: Platform.select({
@@ -31,14 +30,24 @@ export default function TabLayout() {
           },
           default: {},
         }),
-        tabBarLabelStyle: {
-          fontFamily: "Montserrat_600SemiBold",
-          fontSize: 10,
-          marginTop: -4,
-          marginBottom: 4,
-        },
       }}
     >
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: "Services",
+          tabBarIcon: ({ color }) => (
+            <BriefcaseBusiness size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="resavations"
+        options={{
+          title: "Resavation",
+          tabBarIcon: ({ color }) => <CalendarDays size={24} color={color} />,
+        }}
+      />
       <Tabs.Screen
         name="index"
         options={{
@@ -46,13 +55,6 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <LayoutDashboard size={24} color={color} />
           ),
-        }}
-      />
-      <Tabs.Screen
-        name="reservations"
-        options={{
-          title: "Reservations",
-          tabBarIcon: ({ color }) => <CalendarDays size={24} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -65,15 +67,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profile",
+          title: "Vendor Profile",
           tabBarIcon: ({ color }) => <User size={24} color={color} />,
-        }}
-      />
-      {/* Hide the explore tab if it exists or use it for one of the above */}
-      <Tabs.Screen
-        name="explore"
-        options={{
-          href: null,
         }}
       />
     </Tabs>

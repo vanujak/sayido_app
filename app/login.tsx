@@ -1,51 +1,88 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+
+type LoginApiResponse = {
+  message?: string;
+};
 
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const apiBaseUrl =
+    process.env.EXPO_PUBLIC_API_URL ||
+    process.env.EXPO_PUBLIC_GRAPHQL_URL?.replace(/\/graphql\/?$/, "") ||
+    "";
+
+  const loginVendor = async () => {
+    const paths = ["/auth/loginVendor", "/api/auth/loginVendor"];
+    let lastError = "Login failed";
+
+    for (const path of paths) {
+      try {
+        const response = await fetch(`${apiBaseUrl}${path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ email, password }),
+        });
+
+        let body: LoginApiResponse | null = null;
+        try {
+          body = (await response.json()) as LoginApiResponse;
+        } catch {
+          body = null;
+        }
+
+        if (response.ok) {
+          return body;
+        }
+
+        if (body?.message) {
+          lastError = body.message;
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "Network error";
+      }
+    }
+
+    throw new Error(lastError);
+  };
 
   const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      setErrorMessage("Please enter email and password.");
+      return;
+    }
+
+    setErrorMessage("");
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:5000/api/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Navigate to dashboard with params
-        router.replace({
-          pathname: "/(tabs)",
-          params: {
-            fname: data.user.fname,
-            lname: data.user.lname,
-            location: data.user.location,
-          },
-        });
-      } else {
-        alert(data.message || "Login failed");
-      }
+      await loginVendor();
+      router.replace("/(tabs)");
     } catch (error) {
       console.error("Login Error:", error);
-      alert("Failed to connect to server");
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Login failed. Check credentials and backend."
+      );
     } finally {
       setLoading(false);
     }
@@ -103,10 +140,16 @@ export default function LoginScreen() {
               onPress={handleLogin}
               disabled={loading}
             >
-              <Text style={styles.loginButtonText}>
-                {loading ? "Logging In..." : "Log In"}
-              </Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.loginButtonText}>Log In</Text>
+              )}
             </TouchableOpacity>
+
+            {!!errorMessage && (
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            )}
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>New vendor? </Text>
@@ -216,5 +259,12 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
     color: "#FC7B54",
+  },
+  errorText: {
+    fontFamily: "Montserrat_400Regular",
+    color: "#DC2626",
+    textAlign: "center",
+    marginTop: -18,
+    marginBottom: 16,
   },
 });
