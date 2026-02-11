@@ -1,5 +1,12 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 type VendorProfile = {
   fname: string;
@@ -27,23 +34,30 @@ export default function ProfileScreen() {
     location: String(params.location ?? "Ratnapura, Sri Lanka"),
     about: String(
       params.about ??
-        "Professional wedding vendor focused on quality service and reliable communication."
+        "Professional wedding vendor focused on quality service and reliable communication.",
     ),
     profilePicUrl: String(params.profile_pic_url ?? ""),
   };
 
   const fullName = `${vendor.fname} ${vendor.lname}`.trim();
-  const initials = `${vendor.fname.charAt(0)}${vendor.lname.charAt(0)}`.toUpperCase();
+  const initials =
+    `${vendor.fname.charAt(0)}${vendor.lname.charAt(0)}`.toUpperCase();
 
   const handleLogout = () => {
     router.replace("/login");
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.headerCard}>
         {vendor.profilePicUrl ? (
-          <Image source={{ uri: vendor.profilePicUrl }} style={styles.avatarImage} />
+          <Image
+            source={{ uri: vendor.profilePicUrl }}
+            style={styles.avatarImage}
+          />
         ) : (
           <View style={styles.avatarFallback}>
             <Text style={styles.avatarText}>{initials || "V"}</Text>
@@ -63,7 +77,11 @@ export default function ProfileScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Business</Text>
-        <InfoRow label="About" value={vendor.about || "No description added yet."} multiline />
+        <InfoRow
+          label="About"
+          value={vendor.about || "No description added yet."}
+          multiline
+        />
       </View>
 
       <TouchableOpacity
@@ -89,7 +107,9 @@ function InfoRow({
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, multiline && styles.rowValueMultiline]}>{value}</Text>
+      <Text style={[styles.rowValue, multiline && styles.rowValueMultiline]}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -108,6 +128,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "#EEF1F5",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
   },
   avatarImage: {
     width: 88,
@@ -153,6 +178,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#EEF1F5",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 1,
   },
   sectionTitle: {
     fontFamily: "Outfit_700Bold",
@@ -180,12 +210,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   logoutButton: {
-    marginTop: 6,
+    marginTop: 10,
     backgroundColor: "#111827",
     borderRadius: 14,
     height: 52,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#111827",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 3,
   },
   logoutText: {
     fontFamily: "Outfit_700Bold",

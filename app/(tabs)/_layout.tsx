@@ -24,11 +24,35 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarItemStyle: {
+          paddingTop: 8,
+        },
         tabBarStyle: Platform.select({
           ios: {
             position: "absolute",
+            left: 14,
+            right: 14,
+            bottom: 12,
+            height: 70,
+            borderTopWidth: 0,
+            borderRadius: 22,
+            backgroundColor: "#FFFFFF",
+            shadowColor: "#111827",
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.1,
+            shadowRadius: 18,
           },
-          default: {},
+          default: {
+            height: 70,
+            borderTopWidth: 1,
+            borderTopColor: "#EEF1F5",
+            backgroundColor: "#FFFFFF",
+            elevation: 8,
+            shadowColor: "#111827",
+            shadowOffset: { width: 0, height: -2 },
+            shadowOpacity: 0.08,
+            shadowRadius: 8,
+          },
         }),
       }}
     >

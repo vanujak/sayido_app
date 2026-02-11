@@ -525,6 +525,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#EEF1F5",
     padding: 16,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 1,
   },
   emptyTitle: {
     fontFamily: "Outfit_700Bold",
@@ -543,6 +548,11 @@ const styles = StyleSheet.create({
     borderColor: "#EEF1F5",
     padding: 16,
     marginBottom: 12,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 1,
   },
   offeringName: {
     fontFamily: "Outfit_700Bold",

@@ -233,7 +233,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F5F7FA",
   },
   scrollContainer: {
     flexGrow: 1,
@@ -245,22 +245,33 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 400,
     alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#EEF1F5",
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 3,
   },
   header: {
     alignItems: "center",
-    marginBottom: 40,
+    marginBottom: 28,
   },
   title: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 42,
-    color: "#000000",
+    fontSize: 40,
+    color: "#111827",
     letterSpacing: -1,
   },
   subtitle: {
     fontFamily: "Montserrat_400Regular",
-    fontSize: 18,
+    fontSize: 16,
     color: "#6B7280",
-    marginTop: 8,
+    marginTop: 6,
   },
   form: {
     width: "100%",
@@ -277,30 +288,30 @@ const styles = StyleSheet.create({
   },
   input: {
     width: "100%",
-    height: 56,
+    height: 54,
     borderWidth: 1,
-    borderColor: "#E5E7EB", // Light gray border
-    borderRadius: 9999, // Pill shape
+    borderColor: "#E5E7EB",
+    borderRadius: 16,
     paddingHorizontal: 24,
     fontFamily: "Montserrat_400Regular",
     fontSize: 16,
-    color: "#000000",
-    backgroundColor: "#F9FAFB", // Very subtle gray bg often looks premium
+    color: "#111827",
+    backgroundColor: "#F9FAFB",
   },
   loginButton: {
     width: "100%",
-    height: 56,
-    backgroundColor: "#FC7B54", // Brand Orange
-    borderRadius: 28, // Fully rounded to match pill inputs or 19px as per design. 56/2 = 28 for pill. Design said 19px, but pill fits 'pill inputs' better. I'll stick to pill for consistency if inputs are pill.
+    height: 54,
+    backgroundColor: "#FC7B54",
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
     marginTop: 12,
-    marginBottom: 32,
+    marginBottom: 24,
     shadowColor: "#FC7B54",
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
-    shadowRadius: 15,
-    elevation: 5,
+    shadowRadius: 14,
+    elevation: 4,
   },
   loginButtonDisabled: {
     backgroundColor: "#FFBCA6", // Lighter orange

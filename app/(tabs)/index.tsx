@@ -8,6 +8,9 @@ export default function Dashboard() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>Dashboard</Text>
+        </View>
         <Text style={styles.title}>Welcome back,</Text>
         <Text style={styles.name}>
           {fname || "Vendor"} {lname || ""}
@@ -28,9 +31,9 @@ export default function Dashboard() {
         </View>
       </View>
 
-      <Text style={styles.dashboardNote}>
-        This is your simple vendor dashboard.
-      </Text>
+      <View style={styles.noteCard}>
+        <Text style={styles.dashboardNote}>Track profile status and keep services updated.</Text>
+      </View>
     </ScrollView>
   );
 }
@@ -38,34 +41,50 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 28,
     backgroundColor: "#F3F4F6",
-    paddingTop: Platform.OS === "web" ? 60 : 80,
+    paddingTop: Platform.OS === "web" ? 56 : 74,
   },
   header: {
-    marginBottom: 32,
+    marginBottom: 18,
+  },
+  badge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#FFEDE6",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    marginBottom: 10,
+  },
+  badgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    color: "#FC7B54",
+    fontSize: 12,
   },
   title: {
     fontFamily: "Montserrat_400Regular",
-    fontSize: 20,
+    fontSize: 18,
     color: "#6B7280",
   },
   name: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 32,
+    fontSize: 34,
     color: "#1F2937",
-    marginTop: 4,
+    marginTop: 2,
   },
   card: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-    marginBottom: 24,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#EEF1F5",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    elevation: 2,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontFamily: "Outfit_700Bold",
@@ -76,7 +95,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 12,
+    paddingVertical: 13,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
@@ -95,9 +114,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#10B981", // Green
   },
+  noteCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EEF1F5",
+    padding: 14,
+  },
   dashboardNote: {
-    textAlign: "center",
-    color: "#9CA3AF",
+    color: "#6B7280",
     fontFamily: "Montserrat_400Regular",
+    lineHeight: 20,
   },
 });

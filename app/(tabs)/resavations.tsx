@@ -56,17 +56,6 @@ const parseDate = (value: string) => {
 const monthLabel = (value: Date) =>
   value.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
-const longDate = (value: string) => {
-  const parsed = parseDate(value);
-  if (!parsed) return value;
-  return parsed.toLocaleDateString(undefined, {
-    weekday: "short",
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-};
-
 const graphQlRequest = async <TData>(
   query: string,
   variables: Record<string, unknown>
@@ -332,23 +321,6 @@ export default function ReservationsScreen() {
 
   const selectedReservations = selectedDateKey ? reservationsByDate[selectedDateKey] || [] : [];
 
-  const upcomingReservations = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return reservations
-      .filter((reservation) => reservation.status !== "failed")
-      .filter((reservation) => {
-        const parsed = parseDate(reservation.bookingDate);
-        return !!parsed && parsed >= today;
-      })
-      .sort((a, b) => {
-        const first = parseDate(a.bookingDate)?.getTime() || 0;
-        const second = parseDate(b.bookingDate)?.getTime() || 0;
-        return first - second;
-      });
-  }, [reservations]);
-
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
@@ -386,7 +358,7 @@ export default function ReservationsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Text style={styles.title}>Reservations</Text>
-      <Text style={styles.subtitle}>Calendar and upcoming booking details</Text>
+      <Text style={styles.subtitle}>Calendar view for your booking dates</Text>
 
       <View style={styles.calendarCard}>
         <View style={styles.calendarHeader}>
@@ -458,28 +430,6 @@ export default function ReservationsScreen() {
         )}
       </View>
 
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Upcoming Reservations</Text>
-        {upcomingReservations.length === 0 ? (
-          <Text style={styles.emptyText}>No upcoming reservations.</Text>
-        ) : (
-          upcomingReservations.map((reservation) => (
-            <View key={`upcoming-${reservation.id}`} style={styles.reservationCard}>
-              <View style={styles.rowBetween}>
-                <Text style={styles.packageName}>{reservation.packageName}</Text>
-                <Text style={styles.amount}>{formatAmount(reservation.amount)}</Text>
-              </View>
-              <Text style={styles.meta}>{reservation.offeringName}</Text>
-              <Text style={styles.meta}>{longDate(reservation.bookingDate)}</Text>
-              <Text style={styles.meta}>
-                {reservation.visitorName}
-                {reservation.visitorPhone ? ` • ${reservation.visitorPhone}` : ""}
-              </Text>
-              <Text style={styles.status}>{reservation.status.toUpperCase()}</Text>
-            </View>
-          ))
-        )}
-      </View>
     </ScrollView>
   );
 }
@@ -544,6 +494,11 @@ const styles = StyleSheet.create({
     borderColor: "#EEF1F5",
     padding: 14,
     marginBottom: 12,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 1,
   },
   calendarHeader: {
     flexDirection: "row",
@@ -627,6 +582,11 @@ const styles = StyleSheet.create({
     borderColor: "#EEF1F5",
     padding: 14,
     marginBottom: 12,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 1,
   },
   sectionTitle: {
     fontFamily: "Outfit_700Bold",
