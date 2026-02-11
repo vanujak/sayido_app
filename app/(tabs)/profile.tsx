@@ -2,7 +2,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 type VendorProfile = {
-  id: string;
   fname: string;
   lname: string;
   email: string;
@@ -12,8 +11,6 @@ type VendorProfile = {
   location: string;
   about: string;
   profilePicUrl: string;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export default function ProfileScreen() {
@@ -21,7 +18,6 @@ export default function ProfileScreen() {
   const params = useLocalSearchParams();
 
   const vendor: VendorProfile = {
-    id: "d2114d91-fc79-4b2a-bd84-10c3d24cf507",
     fname: String(params.fname ?? "Vendor"),
     lname: String(params.lname ?? "Test"),
     email: String(params.email ?? "test@gmail.com"),
@@ -34,18 +30,10 @@ export default function ProfileScreen() {
         "Professional wedding vendor focused on quality service and reliable communication."
     ),
     profilePicUrl: String(params.profile_pic_url ?? ""),
-    createdAt: String(params.created_at ?? "2026-02-03T20:06:54.313Z"),
-    updatedAt: String(params.updated_at ?? "2026-02-03T20:06:54.313Z"),
   };
 
   const fullName = `${vendor.fname} ${vendor.lname}`.trim();
   const initials = `${vendor.fname.charAt(0)}${vendor.lname.charAt(0)}`.toUpperCase();
-
-  const formatDate = (value: string) => {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString();
-  };
 
   const handleLogout = () => {
     router.replace("/login");
@@ -75,14 +63,7 @@ export default function ProfileScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Business</Text>
-        <InfoRow label="Vendor ID" value={vendor.id} />
         <InfoRow label="About" value={vendor.about || "No description added yet."} multiline />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Timestamps</Text>
-        <InfoRow label="Created" value={formatDate(vendor.createdAt)} />
-        <InfoRow label="Updated" value={formatDate(vendor.updatedAt)} />
       </View>
 
       <TouchableOpacity
