@@ -11,9 +11,21 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { setVendorSession } from "@/lib/vendor-session";
 
 type LoginApiResponse = {
   message?: string;
+};
+type VendorsLookupResponse = {
+  data?: {
+    findAllVendors?: Array<{
+      id?: string;
+      email?: string;
+    }>;
+  };
+  errors?: Array<{
+    message?: string;
+  }>;
 };
 
 export default function LoginScreen() {
@@ -65,6 +77,50 @@ export default function LoginScreen() {
     throw new Error(lastError);
   };
 
+  const resolveVendorIdByEmail = async (targetEmail: string) => {
+    if (!targetEmail.trim()) return "";
+    const graphQlUrl = process.env.EXPO_PUBLIC_GRAPHQL_URL || "";
+    if (!graphQlUrl) return "";
+
+    try {
+      const response = await fetch(graphQlUrl, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: `
+            query FindAllVendorsForLogin {
+              findAllVendors {
+                id
+                email
+              }
+            }
+          `,
+          variables: {},
+        }),
+      });
+
+      const payload = (await response.json()) as VendorsLookupResponse;
+      if (!response.ok || payload.errors?.length) return "";
+
+      const vendors = Array.isArray(payload.data?.findAllVendors)
+        ? payload.data?.findAllVendors
+        : [];
+      const normalizedTarget = targetEmail.trim().toLowerCase();
+      const matched = vendors.find(
+        (vendor) =>
+          typeof vendor?.email === "string" &&
+          vendor.email.trim().toLowerCase() === normalizedTarget
+      );
+
+      return typeof matched?.id === "string" ? matched.id : "";
+    } catch {
+      return "";
+    }
+  };
+
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       setErrorMessage("Please enter email and password.");
@@ -75,7 +131,17 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await loginVendor();
-      router.replace("/(tabs)");
+      const normalizedEmail = email.trim();
+      const resolvedVendorId = await resolveVendorIdByEmail(normalizedEmail);
+      setVendorSession({ email: normalizedEmail, vendorId: resolvedVendorId });
+      router.replace({
+        pathname: "/(tabs)",
+        params: {
+          email: normalizedEmail,
+          vendor_email: normalizedEmail,
+          vendor_id: resolvedVendorId,
+        },
+      });
     } catch (error) {
       console.error("Login Error:", error);
       setErrorMessage(

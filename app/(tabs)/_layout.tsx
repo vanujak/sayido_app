@@ -35,7 +35,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: "Services",
+          title: "Packages",
           tabBarIcon: ({ color }) => (
             <BriefcaseBusiness size={24} color={color} />
           ),

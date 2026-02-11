@@ -1,126 +1,618 @@
-import { Image } from "expo-image";
-import { Platform, StyleSheet } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { useGlobalSearchParams } from "expo-router";
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 
-import { ExternalLink } from "@/components/external-link";
-import ParallaxScrollView from "@/components/parallax-scroll-view";
-import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
-import { Collapsible } from "@/components/ui/collapsible";
-import { IconSymbol } from "@/components/ui/icon-symbol";
-import { Fonts } from "@/constants/theme";
+type Offering = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+};
 
-export default function TabTwoScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: "#D0D0D0", dark: "#353636" }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
+type VendorPackage = {
+  id: string;
+  offeringId: string;
+  name: string;
+  description: string;
+  pricing: number | null;
+  features: string[];
+  requiresReservation: boolean;
+  visible: boolean;
+};
+
+type OfferingWithPackages = {
+  offering: Offering;
+  packages: VendorPackage[];
+};
+
+const graphQlUrl = process.env.EXPO_PUBLIC_GRAPHQL_URL || "";
+
+const pickList = (value: unknown): Record<string, unknown>[] => {
+  if (Array.isArray(value)) return value as Record<string, unknown>[];
+  if (!value || typeof value !== "object") return [];
+
+  const source = value as Record<string, unknown>;
+  if (Array.isArray(source.data)) return source.data as Record<string, unknown>[];
+  if (Array.isArray(source.items)) return source.items as Record<string, unknown>[];
+  if (Array.isArray(source.offerings)) return source.offerings as Record<string, unknown>[];
+  if (Array.isArray(source.packages)) return source.packages as Record<string, unknown>[];
+  return [];
+};
+
+const toText = (value: unknown, fallback = "") =>
+  typeof value === "string" && value.trim() ? value : fallback;
+
+const toPrice = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const toFeatures = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
+const graphQlRequest = async <TData>(
+  query: string,
+  variables: Record<string, unknown>
+): Promise<TData> => {
+  if (!graphQlUrl) {
+    throw new Error("Missing EXPO_PUBLIC_GRAPHQL_URL");
+  }
+
+  const response = await fetch(graphQlUrl, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  let payload: { data?: TData; errors?: Array<{ message?: string }> } = {};
+  try {
+    payload = (await response.json()) as {
+      data?: TData;
+      errors?: Array<{ message?: string }>;
+    };
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    const message = payload.errors
+      ?.map((entry) => entry.message)
+      .filter((entry): entry is string => !!entry)
+      .join(", ");
+    throw new Error(message || `GraphQL request failed (${response.status})`);
+  }
+
+  if (payload.errors?.length) {
+    const message = payload.errors
+      .map((entry) => entry.message)
+      .filter((entry): entry is string => !!entry)
+      .join(", ");
+    throw new Error(message || "GraphQL query error");
+  }
+
+  if (!payload.data) {
+    throw new Error("GraphQL response has no data");
+  }
+
+  return payload.data;
+};
+
+const readVendorIdFromCookie = () => {
+  if (typeof document === "undefined" || typeof atob !== "function") return "";
+  const tokenPair = document.cookie
+    .split(";")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith("access_tokenVendor="));
+
+  if (!tokenPair) return "";
+  const token = tokenPair.slice("access_tokenVendor=".length);
+  const jwtParts = token.split(".");
+  if (jwtParts.length < 2) return "";
+
+  try {
+    const payload = JSON.parse(atob(jwtParts[1].replace(/-/g, "+").replace(/_/g, "/"))) as {
+      sub?: string;
+    };
+    return toText(payload.sub);
+  } catch {
+    return "";
+  }
+};
+
+const mapOffering = (item: Record<string, unknown>): Offering => ({
+  id: toText(item.id),
+  name: toText(item.name, "Untitled offering"),
+  category: toText(item.category, "Uncategorized"),
+  description: toText(item.description),
+});
+
+const loadVendorIdByEmail = async (email: string): Promise<string> => {
+  const data = await graphQlRequest<{
+    findAllVendors?: Array<{ id?: string; email?: string }>;
+  }>(
+    `
+      query FindAllVendorsForLookup {
+        findAllVendors {
+          id
+          email
+        }
       }
+    `,
+    {}
+  );
+
+  const vendors = Array.isArray(data.findAllVendors) ? data.findAllVendors : [];
+  if (!email.trim()) {
+    return toText(vendors[0]?.id);
+  }
+
+  const target = email.trim().toLowerCase();
+  const matched = vendors.find((vendor) => toText(vendor.email).toLowerCase() === target);
+  return toText(matched?.id) || toText(vendors[0]?.id);
+};
+
+const loadOfferingsByVendor = async (vendorId: string): Promise<Offering[]> => {
+  const data = await graphQlRequest<{
+    findOfferingsByVendor?: Record<string, unknown>[];
+  }>(
+    `
+      query FindOfferingsByVendor($id: String!) {
+        findOfferingsByVendor(id: $id) {
+          id
+          name
+          category
+          description
+        }
+      }
+    `,
+    { id: vendorId }
+  );
+
+  return pickList(data.findOfferingsByVendor).map(mapOffering).filter((offering) => !!offering.id);
+};
+
+const loadOfferingsFromSession = async (vendorEmail: string): Promise<Offering[]> => {
+  const queryWithVendor = async () => {
+    const data = await graphQlRequest<{
+      findOfferings?: Array<Record<string, unknown>>;
+    }>(
+      `
+        query FindOfferingsForSession {
+          findOfferings {
+            id
+            name
+            category
+            description
+            vendor {
+              id
+              email
+            }
+          }
+        }
+      `,
+      {}
+    );
+
+    const offerings = pickList(data.findOfferings)
+      .map(mapOffering)
+      .filter((offering) => !!offering.id);
+    if (!vendorEmail.trim()) return offerings;
+
+    const target = vendorEmail.trim().toLowerCase();
+    return pickList(data.findOfferings)
+      .filter((item) => {
+        const vendor = item.vendor as Record<string, unknown> | undefined;
+        return toText(vendor?.email).toLowerCase() === target;
+      })
+      .map(mapOffering)
+      .filter((offering) => !!offering.id);
+  };
+
+  const queryBasic = async () => {
+    const data = await graphQlRequest<{
+      findOfferings?: Array<Record<string, unknown>>;
+    }>(
+      `
+        query FindOfferingsBasic {
+          findOfferings {
+            id
+            name
+            category
+            description
+          }
+        }
+      `,
+      {}
+    );
+    return pickList(data.findOfferings).map(mapOffering).filter((offering) => !!offering.id);
+  };
+
+  try {
+    return await queryWithVendor();
+  } catch {
+    return queryBasic();
+  }
+};
+
+const parsePackages = (raw: unknown, offeringId: string): VendorPackage[] => {
+  return pickList(raw)
+    .map((item) => {
+      const nestedOffering = item.offering as Record<string, unknown> | undefined;
+      const rawOfferingId =
+        toText(item.offering_id) || toText(item.offeringId) || toText(nestedOffering?.id);
+      return {
+        id: toText(item.id),
+        offeringId: rawOfferingId || offeringId,
+        name: toText(item.name, "Unnamed package"),
+        description: toText(item.description),
+        pricing: toPrice(item.pricing),
+        features: toFeatures(item.features),
+        requiresReservation: Boolean(item.requires_reservation ?? item.requiresReservation),
+        visible: item.visible !== false,
+      };
+    })
+    .filter((pkg) => pkg.id && pkg.offeringId === offeringId && pkg.visible);
+};
+
+const loadPackagesByOffering = async (offeringId: string): Promise<VendorPackage[]> => {
+  const data = await graphQlRequest<{
+    findPackagesByOffering?: Record<string, unknown>[];
+  }>(
+    `
+      query FindPackagesByOffering($offeringId: String!) {
+        findPackagesByOffering(offeringId: $offeringId) {
+          id
+          name
+          description
+          pricing
+          features
+          visible
+          requiresReservation
+          offering {
+            id
+          }
+        }
+      }
+    `,
+    { offeringId }
+  );
+
+  return parsePackages(data.findPackagesByOffering, offeringId);
+};
+
+export default function PackagesScreen() {
+  const vendorSession = getVendorSession();
+  const params = useGlobalSearchParams<{
+    id?: string;
+    vendor_id?: string;
+    vendorId?: string;
+    email?: string;
+    vendor_email?: string;
+  }>();
+  const [sections, setSections] = useState<OfferingWithPackages[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const vendorId =
+    (typeof params.vendor_id === "string" && params.vendor_id) ||
+    (typeof params.vendorId === "string" && params.vendorId) ||
+    (typeof params.id === "string" && params.id) ||
+    vendorSession.vendorId ||
+    process.env.EXPO_PUBLIC_VENDOR_ID ||
+    "";
+  const vendorEmail =
+    (typeof params.vendor_email === "string" && params.vendor_email) ||
+    (typeof params.email === "string" && params.email) ||
+    vendorSession.email ||
+    "";
+
+  const loadData = useCallback(async () => {
+    setErrorMessage("");
+
+    try {
+      const resolvedVendorId =
+        vendorId || (await loadVendorIdByEmail(vendorEmail)) || readVendorIdFromCookie();
+      if (resolvedVendorId) {
+        setVendorSession({
+          vendorId: resolvedVendorId,
+          email: vendorEmail || vendorSession.email,
+        });
+      }
+      const offerings = resolvedVendorId
+        ? await loadOfferingsByVendor(resolvedVendorId)
+        : await loadOfferingsFromSession(vendorEmail);
+      const packageRows = await Promise.all(
+        offerings.map(async (offering) => ({
+          offering,
+          packages: await loadPackagesByOffering(offering.id),
+        }))
+      );
+
+      setSections(packageRows.filter((entry) => entry.packages.length > 0));
+    } catch (error) {
+      setSections([]);
+      const fallbackHelp =
+        "Unable to load offerings/packages from GraphQL. Confirm vendor id source and resolver query names.";
+      setErrorMessage(
+        error instanceof Error && error.message
+          ? `${error.message}. ${fallbackHelp}`
+          : fallbackHelp
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [vendorEmail, vendorId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData();
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.centerState}>
+        <ActivityIndicator size="large" color="#FC7B54" />
+        <Text style={styles.stateText}>Loading packages...</Text>
+      </View>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <View style={styles.centerState}>
+        <Text style={styles.errorTitle}>Could not load packages</Text>
+        <Text style={styles.errorText}>{errorMessage}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={loadData} activeOpacity={0.8}>
+          <Text style={styles.retryText}>Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      contentContainerStyle={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      showsVerticalScrollIndicator={false}
     >
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}
-        >
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>
-        This app includes example code to help you get started.
-      </ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{" "}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText>{" "}
-          and{" "}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in{" "}
-          <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{" "}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the
-          web version, press <ThemedText type="defaultSemiBold">w</ThemedText>{" "}
-          in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the{" "}
-          <ThemedText type="defaultSemiBold">@2x</ThemedText> and{" "}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to
-          provide files for different screen densities
-        </ThemedText>
-        <Image
-          source={require("@/assets/images/react-logo.png")}
-          style={{ width: 100, height: 100, alignSelf: "center" }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{" "}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook
-          lets you inspect what the user&apos;s current color scheme is, and so
-          you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{" "}
-          <ThemedText type="defaultSemiBold">
-            components/HelloWave.tsx
-          </ThemedText>{" "}
-          component uses the powerful{" "}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{" "}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The{" "}
-              <ThemedText type="defaultSemiBold">
-                components/ParallaxScrollView.tsx
-              </ThemedText>{" "}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+      <Text style={styles.title}>Packages</Text>
+      <Text style={styles.subtitle}>Your offerings and their packages</Text>
+
+      {sections.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyTitle}>No packages yet</Text>
+          <Text style={styles.emptyText}>
+            Add packages under offerings to show them on this page.
+          </Text>
+        </View>
+      ) : (
+        sections.map((entry) => (
+          <View key={entry.offering.id} style={styles.offeringCard}>
+            <Text style={styles.offeringName}>{entry.offering.name}</Text>
+            <Text style={styles.offeringCategory}>{entry.offering.category}</Text>
+            {!!entry.offering.description && (
+              <Text style={styles.offeringDescription}>{entry.offering.description}</Text>
+            )}
+
+            {entry.packages.map((pkg) => (
+              <View key={pkg.id} style={styles.packageCard}>
+                <View style={styles.packageHeader}>
+                  <Text style={styles.packageName}>{pkg.name}</Text>
+                  {pkg.pricing !== null && (
+                    <Text style={styles.packagePrice}>${pkg.pricing.toFixed(2)}</Text>
+                  )}
+                </View>
+
+                {!!pkg.description && (
+                  <Text style={styles.packageDescription}>{pkg.description}</Text>
+                )}
+
+                <Text style={styles.packageMeta}>
+                  {pkg.requiresReservation ? "Requires reservation" : "No reservation required"}
+                </Text>
+
+                {pkg.features.length > 0 && (
+                  <View style={styles.featuresWrap}>
+                    {pkg.features.map((feature, index) => (
+                      <View key={`${pkg.id}-${feature}-${index}`} style={styles.featureTag}>
+                        <Text style={styles.featureText}>{feature}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        ))
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: "#808080",
-    bottom: -90,
-    left: -35,
-    position: "absolute",
+  container: {
+    padding: 20,
+    paddingBottom: 40,
+    backgroundColor: "#F5F7FA",
   },
-  titleContainer: {
+  centerState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "#F5F7FA",
+  },
+  stateText: {
+    marginTop: 10,
+    color: "#6B7280",
+    fontFamily: "Montserrat_400Regular",
+  },
+  errorTitle: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 20,
+    color: "#111827",
+    marginBottom: 8,
+  },
+  errorText: {
+    fontFamily: "Montserrat_400Regular",
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: "#111827",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+  },
+  retryText: {
+    color: "#FFFFFF",
+    fontFamily: "Outfit_700Bold",
+    fontSize: 14,
+  },
+  title: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 30,
+    color: "#111827",
+  },
+  subtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#6B7280",
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  emptyCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#EEF1F5",
+    padding: 16,
+  },
+  emptyTitle: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 18,
+    color: "#111827",
+    marginBottom: 6,
+  },
+  emptyText: {
+    fontFamily: "Montserrat_400Regular",
+    color: "#6B7280",
+  },
+  offeringCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#EEF1F5",
+    padding: 16,
+    marginBottom: 12,
+  },
+  offeringName: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 20,
+    color: "#111827",
+  },
+  offeringCategory: {
+    marginTop: 2,
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#FC7B54",
+  },
+  offeringDescription: {
+    marginTop: 8,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#6B7280",
+    lineHeight: 20,
+  },
+  packageCard: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+  packageHeader: {
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  packageName: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 15,
+    color: "#111827",
+    flex: 1,
+  },
+  packagePrice: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 15,
+    color: "#111827",
+  },
+  packageDescription: {
+    marginTop: 6,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#6B7280",
+    lineHeight: 20,
+  },
+  packageMeta: {
+    marginTop: 8,
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#4B5563",
+  },
+  featuresWrap: {
+    marginTop: 10,
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
+  },
+  featureTag: {
+    backgroundColor: "#FFF3EE",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  featureText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#FC7B54",
   },
 });
