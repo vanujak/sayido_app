@@ -227,13 +227,6 @@ export default function LoginScreen() {
             {!!errorMessage && (
               <Text style={styles.errorText}>{errorMessage}</Text>
             )}
-
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>New vendor? </Text>
-              <TouchableOpacity>
-                <Text style={styles.linkText}>Create an account</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </ScrollView>
@@ -332,21 +325,6 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit_700Bold",
     fontSize: 18,
     color: "#FFFFFF",
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  footerText: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  linkText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 14,
-    color: "#FC7B54",
   },
   errorText: {
     fontFamily: "Montserrat_400Regular",
