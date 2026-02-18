@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { graphQlUrl } from "@/lib/api-config";
 
 type Offering = {
   id: string;
@@ -33,8 +34,6 @@ type OfferingWithPackages = {
   offering: Offering;
   packages: VendorPackage[];
 };
-
-const graphQlUrl = process.env.EXPO_PUBLIC_GRAPHQL_URL || "";
 
 const pickList = (value: unknown): Record<string, unknown>[] => {
   if (Array.isArray(value)) return value as Record<string, unknown>[];

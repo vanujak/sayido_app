@@ -12,10 +12,39 @@ import {
   View,
 } from "react-native";
 import { setVendorSession } from "@/lib/vendor-session";
+import { apiBaseUrl, graphQlUrl } from "@/lib/api-config";
 
 type LoginApiResponse = {
   message?: string;
 };
+
+const normalizeBaseUrl = (value: string) => value.trim().replace(/\/+$/, "");
+const joinUrl = (base: string, path: string) => {
+  const normalizedBase = normalizeBaseUrl(base);
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${normalizedBase}${normalizedPath}`;
+};
+
+const parseLoginErrorMessage = async (response: Response) => {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    try {
+      const body = (await response.json()) as LoginApiResponse;
+      if (body?.message) return body.message;
+    } catch {
+      return "";
+    }
+    return "";
+  }
+
+  try {
+    const text = await response.text();
+    return text.trim();
+  } catch {
+    return "";
+  }
+};
+
 type VendorsLookupResponse = {
   data?: {
     findAllVendors?: Array<{
@@ -35,51 +64,33 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const apiBaseUrl =
-    process.env.EXPO_PUBLIC_API_URL ||
-    process.env.EXPO_PUBLIC_GRAPHQL_URL?.replace(/\/graphql\/?$/, "") ||
-    "";
-
   const loginVendor = async () => {
-    const paths = ["/auth/loginVendor", "/api/auth/loginVendor"];
-    let lastError = "Login failed";
+    const requestUrl = joinUrl(apiBaseUrl, "/auth/loginVendor");
+    let response: Response;
 
-    for (const path of paths) {
-      try {
-        const response = await fetch(`${apiBaseUrl}${path}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({ email, password }),
-        });
-
-        let body: LoginApiResponse | null = null;
-        try {
-          body = (await response.json()) as LoginApiResponse;
-        } catch {
-          body = null;
-        }
-
-        if (response.ok) {
-          return body;
-        }
-
-        if (body?.message) {
-          lastError = body.message;
-        }
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : "Network error";
-      }
+    try {
+      response = await fetch(requestUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Network error");
     }
 
-    throw new Error(lastError);
+    if (response.ok) {
+      return;
+    }
+
+    const parsedMessage = await parseLoginErrorMessage(response);
+    throw new Error(parsedMessage || `Login request failed (${response.status})`);
   };
 
   const resolveVendorIdByEmail = async (targetEmail: string) => {
     if (!targetEmail.trim()) return "";
-    const graphQlUrl = process.env.EXPO_PUBLIC_GRAPHQL_URL || "";
     if (!graphQlUrl) return "";
 
     try {

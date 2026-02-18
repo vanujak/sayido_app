@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { graphQlUrl } from "@/lib/api-config";
 
 type Reservation = {
   id: string;
@@ -26,7 +27,6 @@ type Reservation = {
 
 type ReservationMap = Record<string, Reservation[]>;
 
-const graphQlUrl = process.env.EXPO_PUBLIC_GRAPHQL_URL || "";
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const toText = (value: unknown, fallback = "") =>

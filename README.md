@@ -42,6 +42,17 @@ To learn more about developing your project with Expo, look at the following res
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
 - [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
 
+## Android localhost backend notes
+
+When running on Android, `localhost` points to the Android device/emulator itself, not your development machine.
+
+- This app now auto-rewrites `localhost` / `127.0.0.1` API URLs to a reachable host on Android.
+- For emulator, it falls back to `10.0.2.2`.
+- For a physical Android device, set:
+  - `EXPO_PUBLIC_GRAPHQL_URL=http://<your-lan-ip>:<port>/graphql`
+  - `EXPO_PUBLIC_API_URL=http://<your-lan-ip>:<port>`
+- Ensure your backend binds to `0.0.0.0` (not only `127.0.0.1`) and allows CORS from Expo.
+
 ## Join the community
 
 Join our community of developers creating universal apps.
