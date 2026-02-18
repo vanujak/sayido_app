@@ -1,7 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Image,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -48,10 +47,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={styles.container}>
       <View style={styles.headerCard}>
         {vendor.profilePicUrl ? (
           <Image
@@ -81,6 +77,7 @@ export default function ProfileScreen() {
           label="About"
           value={vendor.about || "No description added yet."}
           multiline
+          maxLines={2}
         />
       </View>
 
@@ -91,7 +88,7 @@ export default function ProfileScreen() {
       >
         <Text style={styles.logoutText}>Log Out</Text>
       </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -99,15 +96,20 @@ function InfoRow({
   label,
   value,
   multiline = false,
+  maxLines,
 }: {
   label: string;
   value: string;
   multiline?: boolean;
+  maxLines?: number;
 }) {
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, multiline && styles.rowValueMultiline]}>
+      <Text
+        style={[styles.rowValue, multiline && styles.rowValueMultiline]}
+        numberOfLines={maxLines}
+      >
         {value}
       </Text>
     </View>
@@ -116,16 +118,17 @@ function InfoRow({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     padding: 20,
     backgroundColor: "#F5F7FA",
-    paddingBottom: 40,
+    paddingBottom: 14,
   },
   headerCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     alignItems: "center",
-    padding: 24,
-    marginBottom: 16,
+    padding: 16,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: "#EEF1F5",
     shadowColor: "#0F172A",
@@ -135,47 +138,48 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   avatarImage: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    marginBottom: 14,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    marginBottom: 10,
   },
   avatarFallback: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: "#FC7B54",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 14,
+    marginBottom: 10,
   },
   avatarText: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 30,
+    fontSize: 24,
     color: "#FFFFFF",
   },
   name: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 24,
+    fontSize: 20,
     color: "#111827",
   },
   business: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 15,
+    fontSize: 14,
     color: "#FC7B54",
-    marginTop: 4,
+    marginTop: 3,
   },
   email: {
     fontFamily: "Montserrat_400Regular",
-    fontSize: 14,
+    fontSize: 13,
     color: "#6B7280",
-    marginTop: 6,
+    marginTop: 4,
   },
   section: {
+    flexShrink: 1,
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: "#EEF1F5",
     shadowColor: "#0F172A",
@@ -186,12 +190,12 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 18,
+    fontSize: 16,
     color: "#111827",
-    marginBottom: 10,
+    marginBottom: 6,
   },
   row: {
-    paddingVertical: 10,
+    paddingVertical: 7,
     borderTopWidth: 1,
     borderTopColor: "#F3F4F6",
   },
@@ -204,16 +208,16 @@ const styles = StyleSheet.create({
   rowValue: {
     fontFamily: "Montserrat_400Regular",
     color: "#111827",
-    fontSize: 15,
+    fontSize: 14,
   },
   rowValueMultiline: {
-    lineHeight: 22,
+    lineHeight: 20,
   },
   logoutButton: {
-    marginTop: 10,
+    marginTop: "auto",
     backgroundColor: "#111827",
     borderRadius: 14,
-    height: 52,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#111827",
