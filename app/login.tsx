@@ -1,7 +1,11 @@
+import { apiBaseUrl, graphQlUrl } from "@/lib/api-config";
+import { setVendorSession } from "@/lib/vendor-session";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  ImageBackground,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -11,8 +15,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { setVendorSession } from "@/lib/vendor-session";
-import { apiBaseUrl, graphQlUrl } from "@/lib/api-config";
 
 type LoginApiResponse = {
   message?: string;
@@ -61,6 +63,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -86,7 +89,9 @@ export default function LoginScreen() {
     }
 
     const parsedMessage = await parseLoginErrorMessage(response);
-    throw new Error(parsedMessage || `Login request failed (${response.status})`);
+    throw new Error(
+      parsedMessage || `Login request failed (${response.status})`,
+    );
   };
 
   const resolveVendorIdByEmail = async (targetEmail: string) => {
@@ -123,7 +128,7 @@ export default function LoginScreen() {
       const matched = vendors.find(
         (vendor) =>
           typeof vendor?.email === "string" &&
-          vendor.email.trim().toLowerCase() === normalizedTarget
+          vendor.email.trim().toLowerCase() === normalizedTarget,
       );
 
       return typeof matched?.id === "string" ? matched.id : "";
@@ -158,7 +163,7 @@ export default function LoginScreen() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Login failed. Check credentials and backend."
+          : "Login failed. Check credentials and backend.",
       );
     } finally {
       setLoading(false);
@@ -166,156 +171,206 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
+    <ImageBackground
+      source={require("../assets/images/sayido_login.png")}
+      resizeMode="cover"
+      style={styles.background}
+      imageStyle={styles.backgroundImage}
     >
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.contentContainer}>
-          {/* Header / Logo Area */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Say I Do</Text>
-            <Text style={styles.subtitle}>Vendor Portal</Text>
-          </View>
+      <View style={styles.backgroundOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.container}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scrollContainer}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.contentContainer}>
+              {/* Header / Logo Area */}
+              <View style={styles.header}>
+                <Text style={styles.title}>Say I Do</Text>
+              </View>
 
-          {/* Form */}
-          <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="name@example.com"
-                placeholderTextColor="#9CA3AF"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
+              {/* Form */}
+              <View style={styles.form}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Email Address</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="name@example.com"
+                    placeholderTextColor="#9CA3AF"
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Password</Text>
+                  <View style={styles.passwordInputContainer}>
+                    <TextInput
+                      style={[styles.input, styles.passwordInput]}
+                      placeholder="••••••••"
+                      placeholderTextColor="#9CA3AF"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowPassword((prev) => !prev)}
+                      style={styles.passwordToggle}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        showPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      <Ionicons
+                        name={showPassword ? "eye-off-outline" : "eye-outline"}
+                        size={22}
+                        color="#6B7280"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={[
+                    styles.loginButton,
+                    loading && styles.loginButtonDisabled,
+                  ]}
+                  onPress={handleLogin}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.loginButtonText}>Log In</Text>
+                  )}
+                </TouchableOpacity>
+
+                {!!errorMessage && (
+                  <Text style={styles.errorText}>{errorMessage}</Text>
+                )}
+              </View>
             </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="••••••••"
-                placeholderTextColor="#9CA3AF"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[
-                styles.loginButton,
-                loading && styles.loginButtonDisabled,
-              ]}
-              onPress={handleLogin}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.loginButtonText}>Log In</Text>
-              )}
-            </TouchableOpacity>
-
-            {!!errorMessage && (
-              <Text style={styles.errorText}>{errorMessage}</Text>
-            )}
-          </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
+  background: {
+    flex: 1,
+  },
+  backgroundImage: {
+    width: "100%",
+    height: "100%",
+  },
+  backgroundOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(8, 16, 28, 0.18)",
+  },
   container: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
+    backgroundColor: "transparent",
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: "center",
+    justifyContent: "flex-start",
     alignItems: "center",
     padding: 20,
+    paddingTop: 110,
+    paddingBottom: 40,
   },
   contentContainer: {
     width: "100%",
-    maxWidth: 400,
+    maxWidth: 420,
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#EEF1F5",
-    paddingVertical: 30,
-    paddingHorizontal: 20,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    elevation: 3,
+    backgroundColor: "transparent",
+    borderRadius: 0,
+    borderWidth: 0,
+    paddingVertical: 34,
+    paddingHorizontal: 22,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   header: {
     alignItems: "center",
-    marginBottom: 28,
+    marginBottom: 32,
   },
   title: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 40,
+    fontSize: 48,
+    lineHeight: 50,
     color: "#111827",
-    letterSpacing: -1,
+    letterSpacing: -0.8,
   },
   subtitle: {
     fontFamily: "Montserrat_400Regular",
-    fontSize: 16,
+    fontSize: 17,
     color: "#6B7280",
-    marginTop: 6,
+    marginTop: 8,
   },
   form: {
     width: "100%",
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 22,
   },
   label: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 14,
+    fontSize: 15,
     color: "#1F2937",
-    marginBottom: 8,
-    marginLeft: 4,
+    marginBottom: 10,
+    marginLeft: 6,
   },
   input: {
     width: "100%",
-    height: 54,
+    height: 70,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 16,
-    paddingHorizontal: 24,
+    borderColor: "#D4D8DE",
+    borderRadius: 22,
+    paddingHorizontal: 28,
     fontFamily: "Montserrat_400Regular",
-    fontSize: 16,
+    fontSize: 17,
     color: "#111827",
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "rgba(248, 250, 252, 0.8)",
+  },
+  passwordInputContainer: {
+    position: "relative",
+    width: "100%",
+  },
+  passwordInput: {
+    paddingRight: 62,
+  },
+  passwordToggle: {
+    position: "absolute",
+    right: 20,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
   },
   loginButton: {
     width: "100%",
-    height: 54,
+    height: 64,
     backgroundColor: "#FC7B54",
-    borderRadius: 16,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 12,
-    marginBottom: 24,
+    marginTop: 14,
+    marginBottom: 6,
     shadowColor: "#FC7B54",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 14,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.26,
+    shadowRadius: 16,
+    elevation: 6,
   },
   loginButtonDisabled: {
     backgroundColor: "#FFBCA6", // Lighter orange
@@ -323,14 +378,15 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 18,
+    fontSize: 20,
+    lineHeight: 22,
     color: "#FFFFFF",
   },
   errorText: {
     fontFamily: "Montserrat_400Regular",
     color: "#DC2626",
     textAlign: "center",
-    marginTop: -18,
-    marginBottom: 16,
+    marginTop: 12,
+    marginBottom: 4,
   },
 });
