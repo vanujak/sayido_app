@@ -332,33 +332,41 @@ export default function ReservationsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centerState}>
-        <ActivityIndicator size="large" color="#FC7B54" />
-        <Text style={styles.stateText}>Loading reservations...</Text>
+      <View style={styles.screen}>
+        <View style={styles.decorationTop} />
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color="#FC7B54" />
+          <Text style={styles.stateText}>Loading reservations...</Text>
+        </View>
       </View>
     );
   }
 
   if (errorMessage) {
     return (
-      <View style={styles.centerState}>
-        <Text style={styles.errorTitle}>Could not load reservations</Text>
-        <Text style={styles.errorText}>{errorMessage}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadData} activeOpacity={0.8}>
-          <Text style={styles.retryText}>Try Again</Text>
-        </TouchableOpacity>
+      <View style={styles.screen}>
+        <View style={styles.decorationTop} />
+        <View style={styles.centerState}>
+          <Text style={styles.errorTitle}>Could not load reservations</Text>
+          <Text style={styles.errorText}>{errorMessage}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadData} activeOpacity={0.8}>
+            <Text style={styles.retryText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.title}>Reservations</Text>
-      <Text style={styles.subtitle}>Calendar view for your booking dates</Text>
+    <View style={styles.screen}>
+      <View style={styles.decorationTop} />
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.title}>Reservations</Text>
+        <Text style={styles.subtitle}>Calendar view for your booking dates</Text>
 
       <View style={styles.calendarCard}>
         <View style={styles.calendarHeader}>
@@ -407,7 +415,7 @@ export default function ReservationsScreen() {
         </View>
       </View>
 
-      <View style={styles.sectionCard}>
+        <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>
           {selectedDateKey ? `Selected Date: ${selectedDateKey}` : "Selected Date"}
         </Text>
@@ -428,24 +436,37 @@ export default function ReservationsScreen() {
             </View>
           ))
         )}
-      </View>
-
-    </ScrollView>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#ECF0F7",
+  },
+  decorationTop: {
+    position: "absolute",
+    top: -120,
+    right: -70,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(252, 123, 84, 0.12)",
+  },
   container: {
     padding: 20,
     paddingBottom: 40,
-    backgroundColor: "#F5F7FA",
+    flexGrow: 1,
   },
   centerState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    backgroundColor: "#F5F7FA",
+    backgroundColor: "#ECF0F7",
   },
   stateText: {
     marginTop: 10,
@@ -491,7 +512,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#EEF1F5",
+    borderColor: "#E8EDF5",
     padding: 14,
     marginBottom: 12,
     shadowColor: "#0F172A",
@@ -579,7 +600,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#EEF1F5",
+    borderColor: "#E8EDF5",
     padding: 14,
     marginBottom: 12,
     shadowColor: "#0F172A",

@@ -386,97 +386,119 @@ export default function PackagesScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centerState}>
-        <ActivityIndicator size="large" color="#FC7B54" />
-        <Text style={styles.stateText}>Loading packages...</Text>
+      <View style={styles.screen}>
+        <View style={styles.decorationTop} />
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color="#FC7B54" />
+          <Text style={styles.stateText}>Loading packages...</Text>
+        </View>
       </View>
     );
   }
 
   if (errorMessage) {
     return (
-      <View style={styles.centerState}>
-        <Text style={styles.errorTitle}>Could not load packages</Text>
-        <Text style={styles.errorText}>{errorMessage}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadData} activeOpacity={0.8}>
-          <Text style={styles.retryText}>Try Again</Text>
-        </TouchableOpacity>
+      <View style={styles.screen}>
+        <View style={styles.decorationTop} />
+        <View style={styles.centerState}>
+          <Text style={styles.errorTitle}>Could not load packages</Text>
+          <Text style={styles.errorText}>{errorMessage}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadData} activeOpacity={0.8}>
+            <Text style={styles.retryText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.title}>Packages</Text>
-      <Text style={styles.subtitle}>Your offerings and their packages</Text>
+    <View style={styles.screen}>
+      <View style={styles.decorationTop} />
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.title}>Packages</Text>
+        <Text style={styles.subtitle}>Your offerings and their packages</Text>
 
-      {sections.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No packages yet</Text>
-          <Text style={styles.emptyText}>
-            Add packages under offerings to show them on this page.
-          </Text>
-        </View>
-      ) : (
-        sections.map((entry) => (
-          <View key={entry.offering.id} style={styles.offeringCard}>
-            <Text style={styles.offeringName}>{entry.offering.name}</Text>
-            <Text style={styles.offeringCategory}>{entry.offering.category}</Text>
-            {!!entry.offering.description && (
-              <Text style={styles.offeringDescription}>{entry.offering.description}</Text>
-            )}
+        {sections.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No packages yet</Text>
+            <Text style={styles.emptyText}>
+              Add packages under offerings to show them on this page.
+            </Text>
+          </View>
+        ) : (
+          sections.map((entry) => (
+            <View key={entry.offering.id} style={styles.offeringCard}>
+              <Text style={styles.offeringName}>{entry.offering.name}</Text>
+              <Text style={styles.offeringCategory}>{entry.offering.category}</Text>
+              {!!entry.offering.description && (
+                <Text style={styles.offeringDescription}>{entry.offering.description}</Text>
+              )}
 
-            {entry.packages.map((pkg) => (
-              <View key={pkg.id} style={styles.packageCard}>
-                <View style={styles.packageHeader}>
-                  <Text style={styles.packageName}>{pkg.name}</Text>
-                  {pkg.pricing !== null && (
-                    <Text style={styles.packagePrice}>${pkg.pricing.toFixed(2)}</Text>
+              {entry.packages.map((pkg) => (
+                <View key={pkg.id} style={styles.packageCard}>
+                  <View style={styles.packageHeader}>
+                    <Text style={styles.packageName}>{pkg.name}</Text>
+                    {pkg.pricing !== null && (
+                      <Text style={styles.packagePrice}>${pkg.pricing.toFixed(2)}</Text>
+                    )}
+                  </View>
+
+                  {!!pkg.description && (
+                    <Text style={styles.packageDescription}>{pkg.description}</Text>
+                  )}
+
+                  <Text style={styles.packageMeta}>
+                    {pkg.requiresReservation ? "Requires reservation" : "No reservation required"}
+                  </Text>
+
+                  {pkg.features.length > 0 && (
+                    <View style={styles.featuresWrap}>
+                      {pkg.features.map((feature, index) => (
+                        <View key={`${pkg.id}-${feature}-${index}`} style={styles.featureTag}>
+                          <Text style={styles.featureText}>{feature}</Text>
+                        </View>
+                      ))}
+                    </View>
                   )}
                 </View>
-
-                {!!pkg.description && (
-                  <Text style={styles.packageDescription}>{pkg.description}</Text>
-                )}
-
-                <Text style={styles.packageMeta}>
-                  {pkg.requiresReservation ? "Requires reservation" : "No reservation required"}
-                </Text>
-
-                {pkg.features.length > 0 && (
-                  <View style={styles.featuresWrap}>
-                    {pkg.features.map((feature, index) => (
-                      <View key={`${pkg.id}-${feature}-${index}`} style={styles.featureTag}>
-                        <Text style={styles.featureText}>{feature}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            ))}
-          </View>
-        ))
-      )}
-    </ScrollView>
+              ))}
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#ECF0F7",
+  },
+  decorationTop: {
+    position: "absolute",
+    top: -120,
+    right: -70,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(252, 123, 84, 0.12)",
+  },
   container: {
+    flexGrow: 1,
     padding: 20,
     paddingBottom: 40,
-    backgroundColor: "#F5F7FA",
   },
   centerState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    backgroundColor: "#F5F7FA",
+    backgroundColor: "#ECF0F7",
   },
   stateText: {
     marginTop: 10,
@@ -522,7 +544,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#EEF1F5",
+    borderColor: "#E8EDF5",
     padding: 16,
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 6 },
@@ -544,7 +566,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#EEF1F5",
+    borderColor: "#E8EDF5",
     padding: 16,
     marginBottom: 12,
     shadowColor: "#0F172A",

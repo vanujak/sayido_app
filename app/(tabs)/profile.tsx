@@ -47,47 +47,50 @@ export default function ProfileScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.headerCard}>
-        {vendor.profilePicUrl ? (
-          <Image
-            source={{ uri: vendor.profilePicUrl }}
-            style={styles.avatarImage}
+    <View style={styles.screen}>
+      <View style={styles.decorationTop} />
+      <View style={styles.container}>
+        <View style={styles.headerCard}>
+          {vendor.profilePicUrl ? (
+            <Image
+              source={{ uri: vendor.profilePicUrl }}
+              style={styles.avatarImage}
+            />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarText}>{initials || "V"}</Text>
+            </View>
+          )}
+          <Text style={styles.name}>{fullName}</Text>
+          <Text style={styles.business}>{vendor.busname}</Text>
+          <Text style={styles.email}>{vendor.email}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Contact</Text>
+          <InfoRow label="Phone" value={vendor.phone} />
+          <InfoRow label="City" value={vendor.city} />
+          <InfoRow label="Location" value={vendor.location} />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Business</Text>
+          <InfoRow
+            label="About"
+            value={vendor.about || "No description added yet."}
+            multiline
+            maxLines={2}
           />
-        ) : (
-          <View style={styles.avatarFallback}>
-            <Text style={styles.avatarText}>{initials || "V"}</Text>
-          </View>
-        )}
-        <Text style={styles.name}>{fullName}</Text>
-        <Text style={styles.business}>{vendor.busname}</Text>
-        <Text style={styles.email}>{vendor.email}</Text>
-      </View>
+        </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Contact</Text>
-        <InfoRow label="Phone" value={vendor.phone} />
-        <InfoRow label="City" value={vendor.city} />
-        <InfoRow label="Location" value={vendor.location} />
+        <TouchableOpacity
+          style={styles.logoutButton}
+          activeOpacity={0.8}
+          onPress={handleLogout}
+        >
+          <Text style={styles.logoutText}>Log Out</Text>
+        </TouchableOpacity>
       </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Business</Text>
-        <InfoRow
-          label="About"
-          value={vendor.about || "No description added yet."}
-          multiline
-          maxLines={2}
-        />
-      </View>
-
-      <TouchableOpacity
-        style={styles.logoutButton}
-        activeOpacity={0.8}
-        onPress={handleLogout}
-      >
-        <Text style={styles.logoutText}>Log Out</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -117,10 +120,22 @@ function InfoRow({
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#ECF0F7",
+  },
+  decorationTop: {
+    position: "absolute",
+    top: -120,
+    right: -70,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(252, 123, 84, 0.12)",
+  },
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: "#F5F7FA",
     paddingBottom: 14,
   },
   headerCard: {
@@ -130,7 +145,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#EEF1F5",
+    borderColor: "#E8EDF5",
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.05,
@@ -181,7 +196,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#EEF1F5",
+    borderColor: "#E8EDF5",
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,

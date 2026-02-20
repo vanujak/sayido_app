@@ -1,9 +1,12 @@
 import { graphQlUrl } from "@/lib/api-config";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { useGlobalSearchParams } from "expo-router";
+import { Bell, LogOut } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  BackHandler,
   Platform,
   RefreshControl,
   ScrollView,
@@ -354,6 +357,26 @@ export default function Dashboard() {
     return [...analytics.monthlyViews].sort((a, b) => b.views - a.views)[0];
   }, [analytics.monthlyViews]);
 
+  const handleNotifications = () => {
+    Alert.alert("Notifications", "No new notifications right now.");
+  };
+
+  const handleExitApp = () => {
+    if (Platform.OS === "android") {
+      Alert.alert("Exit App", "Do you want to close the app?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Exit",
+          style: "destructive",
+          onPress: () => BackHandler.exitApp(),
+        },
+      ]);
+      return;
+    }
+
+    Alert.alert("Exit App", "App exit is only supported on Android.");
+  };
+
   if (loading) {
     return (
       <View style={styles.centerState}>
@@ -387,6 +410,26 @@ export default function Dashboard() {
           <View>
             <Text style={styles.title}>Welcome back,</Text>
             <Text style={styles.name}>{vendorName}</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={handleNotifications}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Notifications"
+            >
+              <Bell size={18} color="#1A2438" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.iconButton, styles.exitButton]}
+              onPress={handleExitApp}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Exit app"
+            >
+              <LogOut size={18} color="#FFFFFF" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -461,8 +504,28 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 12,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  iconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E8EDF5",
+  },
+  exitButton: {
+    backgroundColor: "#1F2D48",
+    borderColor: "#1F2D48",
   },
   title: {
     fontFamily: "Montserrat_400Regular",

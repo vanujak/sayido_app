@@ -39,15 +39,26 @@ const getExpoHost = () => {
   return "";
 };
 
-const replaceLocalhostForAndroid = (input: string) => {
-  if (!input || Platform.OS !== "android") return input;
+const replaceLocalhostForNative = (input: string) => {
+  if (!input || Platform.OS === "web") return input;
 
   try {
     const url = new URL(input);
     if (!LOCALHOST_HOSTS.has(url.hostname)) return input;
 
-    // Android emulator cannot access computer localhost directly.
-    url.hostname = getExpoHost() || "10.0.2.2";
+    // Native devices cannot use localhost for APIs on your dev machine.
+    const expoHost = getExpoHost();
+    if (expoHost) {
+      url.hostname = expoHost;
+      return url.toString();
+    }
+
+    // Android emulator fallback when Expo host is unavailable.
+    if (Platform.OS === "android") {
+      url.hostname = "10.0.2.2";
+      return url.toString();
+    }
+
     return url.toString();
   } catch {
     return input;
@@ -58,5 +69,5 @@ const rawGraphQlUrl = process.env.EXPO_PUBLIC_GRAPHQL_URL || "";
 const rawApiBaseUrl =
   process.env.EXPO_PUBLIC_API_URL || rawGraphQlUrl.replace(/\/graphql\/?$/, "");
 
-export const graphQlUrl = replaceLocalhostForAndroid(rawGraphQlUrl);
-export const apiBaseUrl = replaceLocalhostForAndroid(rawApiBaseUrl);
+export const graphQlUrl = replaceLocalhostForNative(rawGraphQlUrl);
+export const apiBaseUrl = replaceLocalhostForNative(rawApiBaseUrl);

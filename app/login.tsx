@@ -81,7 +81,11 @@ export default function LoginScreen() {
         body: JSON.stringify({ email, password }),
       });
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : "Network error");
+      const baseMessage =
+        error instanceof Error ? error.message : "Network error";
+      throw new Error(
+        `${baseMessage}. Request URL: ${requestUrl}. API base URL: ${apiBaseUrl}`,
+      );
     }
 
     if (response.ok) {
