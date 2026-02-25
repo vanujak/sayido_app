@@ -541,7 +541,9 @@ export default function Dashboard() {
             <Text style={styles.insightTitle}>Peak Month</Text>
             <Text style={styles.insightValue}>{peakMonth?.month || "--"}</Text>
             <Text style={styles.insightMeta}>
-              {peakMonth ? `${peakMonth.views} views` : "No monthly data"}
+              {peakMonth
+                ? `${analytics.totalUniqueViews} total veiws`
+                : "No monthly data"}
             </Text>
             <Text style={styles.insightRevenue}>
               {peakMonth ? formatCurrency(revenueByMonth[peakMonth.month] || 0) : formatCurrency(0)}
