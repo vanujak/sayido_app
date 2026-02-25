@@ -368,7 +368,6 @@ export default function Dashboard() {
         key: "views",
         label: "Total Views",
         value: `${analytics.totalUniqueViews}`,
-        meta: "Unique people who viewed your packages",
         icon: Eye,
         iconColor: "#3B82F6",
       },
@@ -376,7 +375,6 @@ export default function Dashboard() {
         key: "bookings",
         label: "Total Bookings",
         value: `${totalBookings}`,
-        meta: "Completed bookings from your packages",
         icon: Users,
         iconColor: "#22C55E",
       },
@@ -384,7 +382,6 @@ export default function Dashboard() {
         key: "revenue",
         label: "Total Revenue",
         value: formatCurrency(totalRevenue),
-        meta: "Revenue from completed bookings",
         icon: DollarSign,
         iconColor: "#F97316",
       },
@@ -392,7 +389,6 @@ export default function Dashboard() {
         key: "packages",
         label: "Packages",
         value: `${totalPackages}`,
-        meta: "Total packages in your account",
         icon: Package,
         iconColor: "#14B8A6",
       },
@@ -484,6 +480,10 @@ export default function Dashboard() {
           {metricCards.map((card) => {
             const Icon = card.icon;
             const isRevenueCard = card.key === "revenue";
+            const revenueAmount = totalRevenue.toLocaleString(undefined, {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            });
             return (
               <View
                 key={card.key}
@@ -496,10 +496,28 @@ export default function Dashboard() {
                   <Text style={styles.metricLabel}>{card.label}</Text>
                   <Icon size={22} color={card.iconColor} strokeWidth={2.1} />
                 </View>
-                <Text style={isRevenueCard ? styles.metricValueSmall : styles.metricValue}>
-                  {card.value}
-                </Text>
-                <Text style={styles.metricMeta}>{card.meta}</Text>
+                {isRevenueCard ? (
+                  <View style={styles.revenueValueBlock}>
+                    <Text
+                      style={styles.revenueCurrency}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
+                    >
+                      LKR
+                    </Text>
+                    <Text
+                      style={styles.revenueAmount}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.45}
+                    >
+                      {revenueAmount}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.metricValue}>{card.value}</Text>
+                )}
               </View>
             );
           })}
@@ -662,12 +680,24 @@ const styles = StyleSheet.create({
     color: "#0F2342",
     marginTop: 26,
   },
-  metricMeta: {
-    marginTop: "auto",
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 12,
-    lineHeight: 16,
-    color: "#8B98AD",
+  revenueValueBlock: {
+    marginTop: 20,
+    width: "100%",
+  },
+  revenueCurrency: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 46,
+    lineHeight: 48,
+    color: "#0F2342",
+    includeFontPadding: false,
+  },
+  revenueAmount: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 56,
+    lineHeight: 58,
+    color: "#0F2342",
+    marginTop: -2,
+    includeFontPadding: false,
   },
   insightRow: {
     flexDirection: "row",
