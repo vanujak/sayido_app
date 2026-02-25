@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
-import { graphQlUrl } from "@/lib/api-config";
+import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 
 type Reservation = {
   id: string;
@@ -66,7 +66,7 @@ const graphQlRequest = async <TData>(
 
   const response = await fetch(graphQlUrl, {
     method: "POST",
-    credentials: "include",
+    credentials: apiCredentials,
     headers: {
       "Content-Type": "application/json",
     },
@@ -121,28 +121,23 @@ const readVendorIdFromCookie = () => {
 };
 
 const loadVendorIdByEmail = async (email: string): Promise<string> => {
+  if (!email.trim()) return "";
+
   const data = await graphQlRequest<{
-    findAllVendors?: Array<{ id?: string; email?: string }>;
+    findVendorByEmail?: { id?: string; email?: string } | null;
   }>(
     `
-      query FindAllVendorsForLookup {
-        findAllVendors {
+      query FindVendorByEmailForLookup($email: String!) {
+        findVendorByEmail(email: $email) {
           id
           email
         }
       }
     `,
-    {}
+    { email: email.trim() }
   );
 
-  const vendors = Array.isArray(data.findAllVendors) ? data.findAllVendors : [];
-  if (!email.trim()) {
-    return toText(vendors[0]?.id);
-  }
-
-  const target = email.trim().toLowerCase();
-  const matched = vendors.find((vendor) => toText(vendor.email).toLowerCase() === target);
-  return toText(matched?.id) || toText(vendors[0]?.id);
+  return toText(data.findVendorByEmail?.id);
 };
 
 const loadVendorReservations = async (vendorId: string): Promise<Reservation[]> => {

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useGlobalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import {
+  AppState,
   ActivityIndicator,
   RefreshControl,
   ScrollView,
@@ -10,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
-import { graphQlUrl } from "@/lib/api-config";
+import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 
 type Offering = {
   id: string;
@@ -87,7 +89,7 @@ const graphQlRequest = async <TData>(
 
   const response = await fetch(graphQlUrl, {
     method: "POST",
-    credentials: "include",
+    credentials: apiCredentials,
     headers: {
       "Content-Type": "application/json",
     },
@@ -157,28 +159,23 @@ const mapOffering = (item: Record<string, unknown>): Offering => ({
 });
 
 const loadVendorIdByEmail = async (email: string): Promise<string> => {
+  if (!email.trim()) return "";
+
   const data = await graphQlRequest<{
-    findAllVendors?: Array<{ id?: string; email?: string }>;
+    findVendorByEmail?: { id?: string; email?: string } | null;
   }>(
     `
-      query FindAllVendorsForLookup {
-        findAllVendors {
+      query FindVendorByEmailForLookup($email: String!) {
+        findVendorByEmail(email: $email) {
           id
           email
         }
       }
     `,
-    {}
+    { email: email.trim() }
   );
 
-  const vendors = Array.isArray(data.findAllVendors) ? data.findAllVendors : [];
-  if (!email.trim()) {
-    return toText(vendors[0]?.id);
-  }
-
-  const target = email.trim().toLowerCase();
-  const matched = vendors.find((vendor) => toText(vendor.email).toLowerCase() === target);
-  return toText(matched?.id) || toText(vendors[0]?.id);
+  return toText(data.findVendorByEmail?.id);
 };
 
 const loadOfferingsByVendor = async (vendorId: string): Promise<Offering[]> => {
@@ -238,29 +235,10 @@ const loadOfferingsFromSession = async (vendorEmail: string): Promise<Offering[]
       .filter((offering) => !!offering.id);
   };
 
-  const queryBasic = async () => {
-    const data = await graphQlRequest<{
-      findOfferings?: Array<Record<string, unknown>>;
-    }>(
-      `
-        query FindOfferingsBasic {
-          findOfferings {
-            id
-            name
-            category
-            description
-          }
-        }
-      `,
-      {}
-    );
-    return pickList(data.findOfferings).map(mapOffering).filter((offering) => !!offering.id);
-  };
-
   try {
     return await queryWithVendor();
   } catch {
-    return queryBasic();
+    return [];
   }
 };
 
@@ -349,6 +327,10 @@ export default function PackagesScreen() {
           email: vendorEmail || vendorSession.email,
         });
       }
+      if (!resolvedVendorId) {
+        throw new Error("Unable to resolve vendor id for package loading.");
+      }
+
       const offerings = resolvedVendorId
         ? await loadOfferingsByVendor(resolvedVendorId)
         : await loadOfferingsFromSession(vendorEmail);
@@ -359,7 +341,7 @@ export default function PackagesScreen() {
         }))
       );
 
-      setSections(packageRows.filter((entry) => entry.packages.length > 0));
+      setSections(packageRows);
     } catch (error) {
       setSections([]);
       const fallbackHelp =
@@ -377,6 +359,24 @@ export default function PackagesScreen() {
 
   useEffect(() => {
     loadData();
+  }, [loadData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        loadData();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, [loadData]);
 
   const onRefresh = () => {
@@ -438,34 +438,42 @@ export default function PackagesScreen() {
                 <Text style={styles.offeringDescription}>{entry.offering.description}</Text>
               )}
 
-              {entry.packages.map((pkg) => (
-                <View key={pkg.id} style={styles.packageCard}>
-                  <View style={styles.packageHeader}>
-                    <Text style={styles.packageName}>{pkg.name}</Text>
-                    {pkg.pricing !== null && (
-                      <Text style={styles.packagePrice}>${pkg.pricing.toFixed(2)}</Text>
+              {entry.packages.length === 0 ? (
+                <View style={styles.packageCard}>
+                  <Text style={styles.packageDescription}>
+                    No packages yet for this offering.
+                  </Text>
+                </View>
+              ) : (
+                entry.packages.map((pkg) => (
+                  <View key={pkg.id} style={styles.packageCard}>
+                    <View style={styles.packageHeader}>
+                      <Text style={styles.packageName}>{pkg.name}</Text>
+                      {pkg.pricing !== null && (
+                        <Text style={styles.packagePrice}>${pkg.pricing.toFixed(2)}</Text>
+                      )}
+                    </View>
+
+                    {!!pkg.description && (
+                      <Text style={styles.packageDescription}>{pkg.description}</Text>
+                    )}
+
+                    <Text style={styles.packageMeta}>
+                      {pkg.requiresReservation ? "Requires reservation" : "No reservation required"}
+                    </Text>
+
+                    {pkg.features.length > 0 && (
+                      <View style={styles.featuresWrap}>
+                        {pkg.features.map((feature, index) => (
+                          <View key={`${pkg.id}-${feature}-${index}`} style={styles.featureTag}>
+                            <Text style={styles.featureText}>{feature}</Text>
+                          </View>
+                        ))}
+                      </View>
                     )}
                   </View>
-
-                  {!!pkg.description && (
-                    <Text style={styles.packageDescription}>{pkg.description}</Text>
-                  )}
-
-                  <Text style={styles.packageMeta}>
-                    {pkg.requiresReservation ? "Requires reservation" : "No reservation required"}
-                  </Text>
-
-                  {pkg.features.length > 0 && (
-                    <View style={styles.featuresWrap}>
-                      {pkg.features.map((feature, index) => (
-                        <View key={`${pkg.id}-${feature}-${index}`} style={styles.featureTag}>
-                          <Text style={styles.featureText}>{feature}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              ))}
+                ))
+              )}
             </View>
           ))
         )}

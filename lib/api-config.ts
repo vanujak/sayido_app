@@ -7,13 +7,20 @@ const extractHost = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return "";
 
-  const hostPort = trimmed.replace(/^https?:\/\//, "").split("/")[0];
-  if (!hostPort) return "";
+  try {
+    const normalized = /^[a-z][a-z0-9+\-.]*:\/\//i.test(trimmed)
+      ? trimmed
+      : `http://${trimmed}`;
+    return new URL(normalized).hostname.replace(/^\[|\]$/g, "");
+  } catch {
+    const hostPort = trimmed.replace(/^[a-z][a-z0-9+\-.]*:\/\//i, "").split("/")[0];
+    if (!hostPort) return "";
 
-  const withoutPort = hostPort.includes(":")
-    ? hostPort.split(":")[0]
-    : hostPort;
-  return withoutPort.replace(/^\[|\]$/g, "");
+    const withoutPort = hostPort.includes(":")
+      ? hostPort.split(":")[0]
+      : hostPort;
+    return withoutPort.replace(/^\[|\]$/g, "");
+  }
 };
 
 const getExpoHost = () => {
@@ -24,9 +31,19 @@ const getExpoHost = () => {
     | undefined;
   const manifest2 = (Constants as { manifest2?: { extra?: { expoClient?: { hostUri?: string } } } })
     .manifest2;
+  const expoGoConfig = (Constants as {
+    expoGoConfig?: {
+      debuggerHost?: string;
+      hostUri?: string;
+      packagerOpts?: { devServer?: string };
+    } | null;
+  }).expoGoConfig;
   const hostCandidates = [
     Constants.expoConfig?.hostUri,
     manifest?.debuggerHost,
+    expoGoConfig?.debuggerHost,
+    expoGoConfig?.hostUri,
+    expoGoConfig?.packagerOpts?.devServer,
     manifest2?.extra?.expoClient?.hostUri,
   ];
 
@@ -68,6 +85,13 @@ const replaceLocalhostForNative = (input: string) => {
 const rawGraphQlUrl = process.env.EXPO_PUBLIC_GRAPHQL_URL || "";
 const rawApiBaseUrl =
   process.env.EXPO_PUBLIC_API_URL || rawGraphQlUrl.replace(/\/graphql\/?$/, "");
+const explicitCredentialMode = process.env.EXPO_PUBLIC_FETCH_CREDENTIALS?.trim();
 
 export const graphQlUrl = replaceLocalhostForNative(rawGraphQlUrl);
 export const apiBaseUrl = replaceLocalhostForNative(rawApiBaseUrl);
+export const apiCredentials: RequestCredentials =
+  explicitCredentialMode === "include" || explicitCredentialMode === "omit"
+    ? explicitCredentialMode
+    : Platform.OS === "web"
+      ? "omit"
+      : "include";

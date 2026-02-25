@@ -1,5 +1,5 @@
-import { apiBaseUrl, graphQlUrl } from "@/lib/api-config";
-import { setVendorSession } from "@/lib/vendor-session";
+import { apiBaseUrl, apiCredentials, graphQlUrl } from "@/lib/api-config";
+import { clearVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -18,6 +18,9 @@ import {
 
 type LoginApiResponse = {
   message?: string;
+  access_token?: string;
+  vendorId?: string;
+  vendor_id?: string;
 };
 
 const normalizeBaseUrl = (value: string) => value.trim().replace(/\/+$/, "");
@@ -49,14 +52,28 @@ const parseLoginErrorMessage = async (response: Response) => {
 
 type VendorsLookupResponse = {
   data?: {
-    findAllVendors?: Array<{
+    findVendorByEmail?: {
       id?: string;
       email?: string;
-    }>;
+    } | null;
   };
   errors?: Array<{
     message?: string;
   }>;
+};
+
+const extractVendorIdFromJwt = (token?: string) => {
+  if (!token) return "";
+  const parts = token.split(".");
+  if (parts.length < 2) return "";
+
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(base64)) as { sub?: string };
+    return typeof payload?.sub === "string" ? payload.sub : "";
+  } catch {
+    return "";
+  }
 };
 
 export default function LoginScreen() {
@@ -77,7 +94,7 @@ export default function LoginScreen() {
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include",
+        credentials: apiCredentials,
         body: JSON.stringify({ email, password }),
       });
     } catch (error) {
@@ -89,7 +106,11 @@ export default function LoginScreen() {
     }
 
     if (response.ok) {
-      return;
+      try {
+        return (await response.json()) as LoginApiResponse;
+      } catch {
+        return {};
+      }
     }
 
     const parsedMessage = await parseLoginErrorMessage(response);
@@ -105,37 +126,28 @@ export default function LoginScreen() {
     try {
       const response = await fetch(graphQlUrl, {
         method: "POST",
-        credentials: "include",
+        credentials: apiCredentials,
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           query: `
-            query FindAllVendorsForLogin {
-              findAllVendors {
+            query FindVendorByEmailForLogin($email: String!) {
+              findVendorByEmail(email: $email) {
                 id
                 email
               }
             }
           `,
-          variables: {},
+          variables: { email: targetEmail.trim() },
         }),
       });
 
       const payload = (await response.json()) as VendorsLookupResponse;
       if (!response.ok || payload.errors?.length) return "";
 
-      const vendors = Array.isArray(payload.data?.findAllVendors)
-        ? payload.data?.findAllVendors
-        : [];
-      const normalizedTarget = targetEmail.trim().toLowerCase();
-      const matched = vendors.find(
-        (vendor) =>
-          typeof vendor?.email === "string" &&
-          vendor.email.trim().toLowerCase() === normalizedTarget,
-      );
-
-      return typeof matched?.id === "string" ? matched.id : "";
+      const vendor = payload.data?.findVendorByEmail;
+      return typeof vendor?.id === "string" ? vendor.id : "";
     } catch {
       return "";
     }
@@ -150,9 +162,25 @@ export default function LoginScreen() {
     setErrorMessage("");
     setLoading(true);
     try {
-      await loginVendor();
+      clearVendorSession();
+      const loginPayload = await loginVendor();
       const normalizedEmail = email.trim();
-      const resolvedVendorId = await resolveVendorIdByEmail(normalizedEmail);
+      const responseVendorId =
+        typeof loginPayload?.vendorId === "string"
+          ? loginPayload.vendorId
+          : typeof loginPayload?.vendor_id === "string"
+            ? loginPayload.vendor_id
+            : "";
+      const tokenVendorId = extractVendorIdFromJwt(loginPayload?.access_token);
+      const resolvedVendorId =
+        responseVendorId ||
+        tokenVendorId ||
+        (await resolveVendorIdByEmail(normalizedEmail));
+
+      if (!resolvedVendorId) {
+        throw new Error("Unable to resolve vendor account id after login.");
+      }
+
       setVendorSession({ email: normalizedEmail, vendorId: resolvedVendorId });
       router.replace({
         pathname: "/(tabs)",

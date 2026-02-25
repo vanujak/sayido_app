@@ -1,4 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { clearVendorSession } from "@/lib/vendor-session";
 import {
   Image,
   StyleSheet,
@@ -43,6 +44,7 @@ export default function ProfileScreen() {
     `${vendor.fname.charAt(0)}${vendor.lname.charAt(0)}`.toUpperCase();
 
   const handleLogout = () => {
+    clearVendorSession();
     router.replace("/login");
   };
 

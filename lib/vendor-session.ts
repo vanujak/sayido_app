@@ -54,3 +54,12 @@ export const setVendorSession = (next: VendorSession) => {
   writeStorage(merged);
 };
 
+export const clearVendorSession = () => {
+  writeMemory({});
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // ignore storage errors
+  }
+};
