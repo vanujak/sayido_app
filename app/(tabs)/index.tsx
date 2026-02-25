@@ -1,7 +1,7 @@
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { useGlobalSearchParams } from "expo-router";
-import { Bell, LogOut } from "lucide-react-native";
+import { Bell, DollarSign, Eye, LogOut, Package, Users } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -237,6 +238,7 @@ const loadVendorPayments = async (vendorId: string): Promise<VendorPayment[]> =>
 };
 
 export default function Dashboard() {
+  const { width } = useWindowDimensions();
   const vendorSession = getVendorSession();
   const params = useGlobalSearchParams<{
     id?: string;
@@ -257,6 +259,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const isCompactScreen = width < 390;
+  const isWideScreen = width >= 860;
+  const metricCardWidth = isWideScreen ? "24%" : "48.6%";
 
   const vendorId =
     (typeof params.vendor_id === "string" && params.vendor_id) ||
@@ -311,6 +316,11 @@ export default function Dashboard() {
     loadDashboardData();
   }, [loadDashboardData]);
 
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadDashboardData();
+  }, [loadDashboardData]);
+
   const completedPayments = useMemo(
     () => payments.filter((payment) => payment.status === "completed"),
     [payments],
@@ -320,10 +330,7 @@ export default function Dashboard() {
     [completedPayments],
   );
   const totalBookings = completedPayments.length;
-  const packagesWithBookings = useMemo(
-    () => new Set(completedPayments.map((payment) => payment.packageId).filter(Boolean)).size,
-    [completedPayments],
-  );
+  const totalPackages = useMemo(() => analytics.packagesAnalytics.length, [analytics.packagesAnalytics]);
 
   const revenueByPackage = useMemo(() => {
     return completedPayments.reduce<Record<string, number>>((acc, payment) => {
@@ -349,8 +356,49 @@ export default function Dashboard() {
 
   const peakMonth = useMemo(() => {
     if (analytics.monthlyViews.length === 0) return null;
-    return [...analytics.monthlyViews].sort((a, b) => b.views - a.views)[0];
+    return analytics.monthlyViews.reduce((max, item) => {
+      if (!max) return item;
+      return item.views > max.views ? item : max;
+    }, analytics.monthlyViews[0]);
   }, [analytics.monthlyViews]);
+
+  const metricCards = useMemo(
+    () => [
+      {
+        key: "views",
+        label: "Total Views",
+        value: `${analytics.totalUniqueViews}`,
+        meta: "Unique people who viewed your packages",
+        icon: Eye,
+        iconColor: "#3B82F6",
+      },
+      {
+        key: "bookings",
+        label: "Total Bookings",
+        value: `${totalBookings}`,
+        meta: "Completed bookings from your packages",
+        icon: Users,
+        iconColor: "#22C55E",
+      },
+      {
+        key: "revenue",
+        label: "Total Revenue",
+        value: formatCurrency(totalRevenue),
+        meta: "Revenue from completed bookings",
+        icon: DollarSign,
+        iconColor: "#F97316",
+      },
+      {
+        key: "packages",
+        label: "Packages",
+        value: `${totalPackages}`,
+        meta: "Total packages in your account",
+        icon: Package,
+        iconColor: "#14B8A6",
+      },
+    ],
+    [analytics.totalUniqueViews, totalBookings, totalPackages, totalRevenue],
+  );
 
   const handleNotifications = () => {
     Alert.alert("Notifications", "No new notifications right now.");
@@ -398,13 +446,17 @@ export default function Dashboard() {
       <View style={styles.decorationTop} />
       <ScrollView
         contentContainerStyle={styles.container}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadDashboardData} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.title}>Welcome back,</Text>
-            <Text style={styles.name}>{vendorName}</Text>
+            <View style={styles.welcomePill}>
+              <Text style={styles.welcomePillText}>Welcome back</Text>
+            </View>
+            <Text style={styles.name} numberOfLines={1}>
+              {vendorName}
+            </Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
@@ -429,22 +481,28 @@ export default function Dashboard() {
         </View>
 
         <View style={styles.metricGrid}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Total Views</Text>
-            <Text style={styles.metricValue}>{analytics.totalUniqueViews}</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Total Bookings</Text>
-            <Text style={styles.metricValue}>{totalBookings}</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Total Revenue</Text>
-            <Text style={styles.metricValueSmall}>{formatCurrency(totalRevenue)}</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Packages</Text>
-            <Text style={styles.metricValue}>{packagesWithBookings}</Text>
-          </View>
+          {metricCards.map((card) => {
+            const Icon = card.icon;
+            const isRevenueCard = card.key === "revenue";
+            return (
+              <View
+                key={card.key}
+                style={[
+                  styles.metricCard,
+                  { width: metricCardWidth, minHeight: isCompactScreen ? 184 : 198 },
+                ]}
+              >
+                <View style={styles.metricHeader}>
+                  <Text style={styles.metricLabel}>{card.label}</Text>
+                  <Icon size={22} color={card.iconColor} strokeWidth={2.1} />
+                </View>
+                <Text style={isRevenueCard ? styles.metricValueSmall : styles.metricValue}>
+                  {card.value}
+                </Text>
+                <Text style={styles.metricMeta}>{card.meta}</Text>
+              </View>
+            );
+          })}
         </View>
 
         <View style={styles.insightRow}>
@@ -527,12 +585,34 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: "#5A6A82",
   },
+  welcomePill: {
+    alignSelf: "flex-start",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E3EAF5",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    marginBottom: 8,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  welcomePillText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#5B6E8B",
+    letterSpacing: 0.2,
+  },
   name: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 42,
-    lineHeight: 46,
+    fontSize: 44,
+    lineHeight: 48,
     color: "#1A2438",
-    marginTop: 2,
+    letterSpacing: 0.2,
+    maxWidth: 220,
   },
   metricGrid: {
     flexDirection: "row",
@@ -542,13 +622,12 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     width: "48.6%",
-    aspectRatio: 1.02,
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
     borderColor: "#E8EDF5",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     alignItems: "flex-start",
     marginBottom: 10,
     shadowColor: "#0F172A",
@@ -556,6 +635,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 14,
     elevation: 2,
+  },
+  metricHeader: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   metricLabel: {
     fontFamily: "Montserrat_600SemiBold",
@@ -565,15 +650,24 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 56,
-    lineHeight: 60,
+    fontSize: 52,
+    lineHeight: 56,
     color: "#0F2342",
+    marginTop: 26,
   },
   metricValueSmall: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 48,
-    lineHeight: 52,
+    fontSize: 40,
+    lineHeight: 44,
     color: "#0F2342",
+    marginTop: 26,
+  },
+  metricMeta: {
+    marginTop: "auto",
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#8B98AD",
   },
   insightRow: {
     flexDirection: "row",
