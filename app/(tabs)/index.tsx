@@ -60,6 +60,20 @@ const monthShort = (value: string) => {
   return parsed.toLocaleDateString("en-US", { month: "short" });
 };
 
+const monthFull = (value: string) => {
+  const parsedFromDate = new Date(value);
+  if (!Number.isNaN(parsedFromDate.getTime())) {
+    return parsedFromDate.toLocaleDateString("en-US", { month: "long" });
+  }
+
+  const parsedFromShort = new Date(`${value} 1, 2000`);
+  if (!Number.isNaN(parsedFromShort.getTime())) {
+    return parsedFromShort.toLocaleDateString("en-US", { month: "long" });
+  }
+
+  return value;
+};
+
 const formatCurrency = (value: number) =>
   `LKR ${value.toLocaleString(undefined, {
     minimumFractionDigits: 0,
@@ -439,7 +453,6 @@ export default function Dashboard() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.decorationTop} />
       <ScrollView
         contentContainerStyle={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -539,7 +552,9 @@ export default function Dashboard() {
 
           <View style={styles.insightCard}>
             <Text style={styles.insightTitle}>Peak Month</Text>
-            <Text style={styles.insightValue}>{peakMonth?.month || "--"}</Text>
+            <Text style={styles.insightValue}>
+              {peakMonth ? monthFull(peakMonth.month) : "--"}
+            </Text>
             <Text style={styles.insightMeta}>
               {peakMonth
                 ? `${analytics.totalUniqueViews} total veiws`
@@ -558,16 +573,7 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#ECF0F7",
-  },
-  decorationTop: {
-    position: "absolute",
-    top: -120,
-    right: -70,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "rgba(252, 123, 84, 0.12)",
+    backgroundColor: "#FFF8F3",
   },
   container: {
     flexGrow: 1,
@@ -742,7 +748,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    backgroundColor: "#ECF0F7",
+    backgroundColor: "#FFF8F3",
   },
   stateText: {
     marginTop: 10,

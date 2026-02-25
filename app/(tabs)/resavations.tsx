@@ -328,7 +328,6 @@ export default function ReservationsScreen() {
   if (loading) {
     return (
       <View style={styles.screen}>
-        <View style={styles.decorationTop} />
         <View style={styles.centerState}>
           <ActivityIndicator size="large" color="#FC7B54" />
           <Text style={styles.stateText}>Loading reservations...</Text>
@@ -340,7 +339,6 @@ export default function ReservationsScreen() {
   if (errorMessage) {
     return (
       <View style={styles.screen}>
-        <View style={styles.decorationTop} />
         <View style={styles.centerState}>
           <Text style={styles.errorTitle}>Could not load reservations</Text>
           <Text style={styles.errorText}>{errorMessage}</Text>
@@ -354,7 +352,6 @@ export default function ReservationsScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.decorationTop} />
       <ScrollView
         contentContainerStyle={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -440,16 +437,7 @@ export default function ReservationsScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#ECF0F7",
-  },
-  decorationTop: {
-    position: "absolute",
-    top: -120,
-    right: -70,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "rgba(252, 123, 84, 0.12)",
+    backgroundColor: "#FFF8F3",
   },
   container: {
     padding: 20,
@@ -461,7 +449,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    backgroundColor: "#ECF0F7",
+    backgroundColor: "#FFF8F3",
   },
   stateText: {
     marginTop: 10,

@@ -79,6 +79,12 @@ const toFeatures = (value: unknown) => {
   return [];
 };
 
+const formatLkr = (value: number) =>
+  `LKR ${value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+
 const graphQlRequest = async <TData>(
   query: string,
   variables: Record<string, unknown>
@@ -387,7 +393,6 @@ export default function PackagesScreen() {
   if (loading) {
     return (
       <View style={styles.screen}>
-        <View style={styles.decorationTop} />
         <View style={styles.centerState}>
           <ActivityIndicator size="large" color="#FC7B54" />
           <Text style={styles.stateText}>Loading packages...</Text>
@@ -399,7 +404,6 @@ export default function PackagesScreen() {
   if (errorMessage) {
     return (
       <View style={styles.screen}>
-        <View style={styles.decorationTop} />
         <View style={styles.centerState}>
           <Text style={styles.errorTitle}>Could not load packages</Text>
           <Text style={styles.errorText}>{errorMessage}</Text>
@@ -413,7 +417,6 @@ export default function PackagesScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.decorationTop} />
       <ScrollView
         contentContainerStyle={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -450,7 +453,7 @@ export default function PackagesScreen() {
                     <View style={styles.packageHeader}>
                       <Text style={styles.packageName}>{pkg.name}</Text>
                       {pkg.pricing !== null && (
-                        <Text style={styles.packagePrice}>${pkg.pricing.toFixed(2)}</Text>
+                        <Text style={styles.packagePrice}>{formatLkr(pkg.pricing)}</Text>
                       )}
                     </View>
 
@@ -485,16 +488,7 @@ export default function PackagesScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#ECF0F7",
-  },
-  decorationTop: {
-    position: "absolute",
-    top: -120,
-    right: -70,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "rgba(252, 123, 84, 0.12)",
+    backgroundColor: "#FFF8F3",
   },
   container: {
     flexGrow: 1,
@@ -506,7 +500,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    backgroundColor: "#ECF0F7",
+    backgroundColor: "#FFF8F3",
   },
   stateText: {
     marginTop: 10,

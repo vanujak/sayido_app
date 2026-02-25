@@ -23,6 +23,9 @@ export default function TabLayout() {
         tabBarInactiveTintColor: inactiveColor,
         tabBarShowLabel: false,
         headerShown: false,
+        sceneStyle: {
+          backgroundColor: "#FFF8F3",
+        },
         tabBarButton: HapticTab,
         tabBarItemStyle: {
           paddingTop: 8,

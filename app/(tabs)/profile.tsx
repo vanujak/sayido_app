@@ -50,7 +50,6 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.decorationTop} />
       <View style={styles.container}>
         <View style={styles.headerCard}>
           {vendor.profilePicUrl ? (
@@ -124,16 +123,7 @@ function InfoRow({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#ECF0F7",
-  },
-  decorationTop: {
-    position: "absolute",
-    top: -120,
-    right: -70,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "rgba(252, 123, 84, 0.12)",
+    backgroundColor: "#FFF8F3",
   },
   container: {
     flex: 1,
