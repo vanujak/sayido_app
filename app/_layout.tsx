@@ -11,7 +11,8 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
+import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -31,6 +32,7 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
+  const router = useRouter();
   const [loaded, error] = useFonts({
     Outfit_400Regular,
     Outfit_700Bold,
@@ -47,6 +49,26 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [loaded]);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as {
+        type?: string;
+        chatId?: string;
+      };
+
+      if (data?.type === "chat_message" && typeof data.chatId === "string" && data.chatId) {
+        router.push({
+          pathname: "/(tabs)/chat",
+          params: { chatId: data.chatId },
+        });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
 
   if (!loaded) {
     return null;

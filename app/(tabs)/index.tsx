@@ -1,6 +1,8 @@
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
+import { registerForPushNotificationsAsync } from "@/lib/push-notifications";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
-import { useGlobalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
+import { useGlobalSearchParams, useRouter } from "expo-router";
 import { Bell, DollarSign, Eye, LogOut, Package, Users } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -251,7 +253,40 @@ const loadVendorPayments = async (vendorId: string): Promise<VendorPayment[]> =>
     .filter((item) => !!item.id);
 };
 
+const loadUnreadMessageCount = async (vendorId: string): Promise<number> => {
+  const data = await graphQlRequest<{
+    getUnreadMessageCount?: number;
+  }>(
+    `
+      query GetUnreadMessageCountForVendor($userId: String!, $userType: String!) {
+        getUnreadMessageCount(userId: $userId, userType: $userType)
+      }
+    `,
+    { userId: vendorId, userType: "vendor" },
+  );
+
+  return toNumber(data.getUnreadMessageCount, 0);
+};
+
+const registerVendorPushToken = async (
+  vendorId: string,
+  pushToken: string,
+): Promise<void> => {
+  if (!vendorId || !pushToken) return;
+  await graphQlRequest<{
+    registerVendorPushToken?: boolean;
+  }>(
+    `
+      mutation RegisterVendorPushToken($vendorId: String!, $pushToken: String!) {
+        registerVendorPushToken(vendorId: $vendorId, pushToken: $pushToken)
+      }
+    `,
+    { vendorId, pushToken },
+  );
+};
+
 export default function Dashboard() {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const vendorSession = getVendorSession();
   const params = useGlobalSearchParams<{
@@ -273,6 +308,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [unreadCount, setUnreadCount] = useState(0);
   const isCompactScreen = width < 390;
   const isWideScreen = width >= 860;
   const metricCardWidth = isWideScreen ? "24%" : "48.6%";
@@ -307,16 +343,30 @@ export default function Dashboard() {
         email: vendorEmail || vendorSession.email,
       });
 
-      const [analyticsResult, paymentsResult] = await Promise.all([
+      const [analyticsResult, paymentsResult, unreadResult] = await Promise.all([
         loadVendorAnalytics(resolvedVendorId),
         loadVendorPayments(resolvedVendorId),
+        loadUnreadMessageCount(resolvedVendorId),
       ]);
 
       setAnalytics(analyticsResult);
       setPayments(paymentsResult);
+      setUnreadCount(toNumber(unreadResult, 0));
+
+      void (async () => {
+        try {
+          const pushToken = await registerForPushNotificationsAsync();
+          if (pushToken) {
+            await registerVendorPushToken(resolvedVendorId, pushToken);
+          }
+        } catch {
+          // Push token registration failures should not block dashboard load.
+        }
+      })();
     } catch (error) {
       setAnalytics({ totalUniqueViews: 0, packagesAnalytics: [], monthlyViews: [] });
       setPayments([]);
+      setUnreadCount(0);
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to load dashboard analytics.",
       );
@@ -329,6 +379,31 @@ export default function Dashboard() {
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      const refreshUnreadCount = async () => {
+        try {
+          const resolvedVendorId =
+            vendorId || (await loadVendorIdByEmail(vendorEmail)) || readVendorIdFromCookie();
+          if (!resolvedVendorId || !active) return;
+          const nextUnread = await loadUnreadMessageCount(resolvedVendorId);
+          if (active) {
+            setUnreadCount(toNumber(nextUnread, 0));
+          }
+        } catch {
+          // Keep existing badge state on transient failures.
+        }
+      };
+
+      void refreshUnreadCount();
+      return () => {
+        active = false;
+      };
+    }, [vendorEmail, vendorId]),
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -411,7 +486,7 @@ export default function Dashboard() {
   );
 
   const handleNotifications = () => {
-    Alert.alert("Notifications", "No new notifications right now.");
+    router.push("/(tabs)/chat");
   };
 
   const handleExitApp = () => {
@@ -476,6 +551,11 @@ export default function Dashboard() {
               accessibilityLabel="Notifications"
             >
               <Bell size={18} color="#1A2438" />
+              {unreadCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{unreadCount > 99 ? "99+" : `${unreadCount}`}</Text>
+                </View>
+              )}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.iconButton, styles.exitButton]}
@@ -601,6 +681,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#E8EDF5",
+  },
+  badge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+  },
+  badgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10,
+    color: "#FFFFFF",
+    lineHeight: 12,
   },
   exitButton: {
     backgroundColor: "#1F2D48",
