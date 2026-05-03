@@ -48,8 +48,28 @@ type ChatRow = {
   messages: ChatMessage[];
 };
 
+type BrowserGlobals = {
+  atob?: (value: string) => string;
+  document?: {
+    cookie?: string;
+  };
+};
+
+type ExpoGlobals = {
+  process?: {
+    env?: {
+      EXPO_PUBLIC_VENDOR_ID?: string;
+    };
+  };
+};
+
+type ChatSearchParams = Record<string, string | string[] | undefined>;
+
 const toText = (value: unknown, fallback = "") =>
   typeof value === "string" && value.trim() ? value : fallback;
+
+const paramToText = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? toText(value[0]) : toText(value);
 
 const graphQlRequest = async <TData>(
   query: string,
@@ -94,8 +114,12 @@ const graphQlRequest = async <TData>(
 };
 
 const readVendorIdFromCookie = () => {
-  if (typeof document === "undefined" || typeof atob !== "function") return "";
-  const tokenPair = document.cookie
+  const browserGlobals = globalThis as BrowserGlobals;
+  const cookie = browserGlobals.document?.cookie;
+  const decodeBase64 = browserGlobals.atob;
+  if (!cookie || typeof decodeBase64 !== "function") return "";
+
+  const tokenPair = cookie
     .split(";")
     .map((entry) => entry.trim())
     .find((entry) => entry.startsWith("access_tokenVendor="));
@@ -107,7 +131,7 @@ const readVendorIdFromCookie = () => {
 
   try {
     const payload = JSON.parse(
-      atob(jwtParts[1].replace(/-/g, "+").replace(/_/g, "/")),
+      decodeBase64(jwtParts[1].replace(/-/g, "+").replace(/_/g, "/")),
     ) as {
       sub?: string;
     };
@@ -311,14 +335,7 @@ const formatTimeAgo = (value: string) => {
 export default function ChatScreen() {
   const vendorSession = getVendorSession();
   const sessionEmail = vendorSession.email || "";
-  const params = useGlobalSearchParams<{
-    id?: string;
-    vendor_id?: string;
-    vendorId?: string;
-    email?: string;
-    vendor_email?: string;
-    chatId?: string;
-  }>();
+  const params = useGlobalSearchParams() as ChatSearchParams;
 
   const [rows, setRows] = useState<ChatRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -334,19 +351,23 @@ export default function ChatScreen() {
   const rowsRef = useRef<ChatRow[]>([]);
   const joinedChatsRef = useRef(new Set<string>());
   const lastUnreadRefreshAtRef = useRef(0);
+  const fallbackVendorId = toText(
+    (globalThis as ExpoGlobals).process?.env?.EXPO_PUBLIC_VENDOR_ID,
+  );
 
   const vendorId =
-    (typeof params.vendor_id === "string" && params.vendor_id) ||
-    (typeof params.vendorId === "string" && params.vendorId) ||
-    (typeof params.id === "string" && params.id) ||
+    paramToText(params.vendor_id) ||
+    paramToText(params.vendorId) ||
+    paramToText(params.id) ||
     vendorSession.vendorId ||
-    process.env.EXPO_PUBLIC_VENDOR_ID ||
+    fallbackVendorId ||
     "";
   const vendorEmail =
-    (typeof params.vendor_email === "string" && params.vendor_email) ||
-    (typeof params.email === "string" && params.email) ||
+    paramToText(params.vendor_email) ||
+    paramToText(params.email) ||
     sessionEmail ||
     "";
+  const paramChatId = paramToText(params.chatId);
 
   const loadData = useCallback(async () => {
     setErrorMessage("");
@@ -448,10 +469,10 @@ export default function ChatScreen() {
   }, [rows]);
 
   useEffect(() => {
-    if (typeof params.chatId !== "string" || !params.chatId) return;
-    if (!rows.some((row) => row.chatId === params.chatId)) return;
-    setActiveChatId(params.chatId);
-  }, [params.chatId, rows]);
+    if (!paramChatId) return;
+    if (!rows.some((row) => row.chatId === paramChatId)) return;
+    setActiveChatId(paramChatId);
+  }, [paramChatId, rows]);
 
   useEffect(() => {
     const resolvedVendorId = vendorId || getVendorSession().vendorId || "";
@@ -779,7 +800,7 @@ export default function ChatScreen() {
         ))}
       </View>
     );
-  }, [activeChat, errorMessage, handleSendReply, loading, replyText, rows, sendError]);
+  }, [activeChat, errorMessage, handleSendReply, loading, replyText, rows, sendError, sending]);
 
   return (
     <View style={styles.screen}>

@@ -1,6 +1,7 @@
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
+import { getChatSocket } from "@/lib/chat-socket";
 import { registerForPushNotificationsAsync } from "@/lib/push-notifications";
-import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { clearVendorSession, getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { useFocusEffect } from "@react-navigation/native";
 import { useGlobalSearchParams, useRouter } from "expo-router";
 import { Bell, DollarSign, Eye, LogOut, Package, Users } from "lucide-react-native";
@@ -8,8 +9,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  BackHandler,
+  Modal,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -42,6 +44,17 @@ type VendorPayment = {
   status: string;
   createdAt: string;
   packageId: string;
+};
+
+type NotificationPreview = {
+  id: string;
+  type: "chat" | "reservation";
+  chatId?: string;
+  reservationId?: string;
+  title: string;
+  message: string;
+  timestamp: string;
+  senderType?: string;
 };
 
 const toText = (value: unknown, fallback = "") =>
@@ -268,6 +281,138 @@ const loadUnreadMessageCount = async (vendorId: string): Promise<number> => {
   return toNumber(data.getUnreadMessageCount, 0);
 };
 
+const loadNotificationPreviews = async (vendorId: string): Promise<NotificationPreview[]> => {
+  const data = await graphQlRequest<{
+    getVendorChats?: Array<{
+      chatId?: string;
+      updatedAt?: string;
+      messages?: Array<{
+        content?: string;
+        senderType?: string;
+        timestamp?: string;
+      }>;
+    }>;
+  }>(
+    `
+      query GetVendorNotificationPreviews($vendorId: String!) {
+        getVendorChats(vendorId: $vendorId) {
+          chatId
+          updatedAt
+          messages {
+            content
+            senderType
+            timestamp
+          }
+        }
+      }
+    `,
+    { vendorId },
+  );
+
+  const chats = Array.isArray(data.getVendorChats) ? data.getVendorChats : [];
+
+  return chats
+    .map((chat) => {
+      const messages = Array.isArray(chat.messages) ? chat.messages : [];
+      const latestFromVisitor = [...messages]
+        .reverse()
+        .find((msg) => toText(msg.senderType).toLowerCase() !== "vendor");
+      return {
+        id: `chat-${toText(chat.chatId)}`,
+        type: "chat" as const,
+        chatId: toText(chat.chatId),
+        title: `Chat ${toText(chat.chatId).slice(0, 8)}`,
+        message: toText(latestFromVisitor?.content, "New message"),
+        senderType: toText(latestFromVisitor?.senderType),
+        timestamp: toText(latestFromVisitor?.timestamp, toText(chat.updatedAt)),
+      };
+    })
+    .filter((item) => !!item.chatId && toText(item.senderType).toLowerCase() !== "vendor")
+    .sort((a, b) => {
+      const aDate = new Date(a.timestamp).getTime();
+      const bDate = new Date(b.timestamp).getTime();
+      return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+    });
+};
+
+const loadReservationNotificationPreviews = async (
+  vendorId: string,
+): Promise<NotificationPreview[]> => {
+  const data = await graphQlRequest<{
+    vendorPayments?: Array<Record<string, unknown>>;
+  }>(
+    `
+      query VendorReservationNotifications($vendorId: String!) {
+        vendorPayments(vendorId: $vendorId) {
+          id
+          createdAt
+          status
+          visitor {
+            visitor_fname
+            visitor_lname
+          }
+          package {
+            name
+          }
+        }
+      }
+    `,
+    { vendorId },
+  );
+
+  const rows = Array.isArray(data.vendorPayments) ? data.vendorPayments : [];
+  return rows
+    .map((item) => {
+      const visitor = (item.visitor as Record<string, unknown> | undefined) || {};
+      const pkg = (item.package as Record<string, unknown> | undefined) || {};
+      const firstName = toText(visitor.visitor_fname);
+      const lastName = toText(visitor.visitor_lname);
+      const visitorName = `${firstName} ${lastName}`.trim() || "A customer";
+      const packageName = toText(pkg.name, "a package");
+      const reservationId = toText(item.id);
+      const status = toText(item.status, "pending").toUpperCase();
+
+      return {
+        id: `reservation-${reservationId}`,
+        type: "reservation" as const,
+        reservationId,
+        title: "New Reservation",
+        message: `${visitorName} reserved ${packageName} (${status})`,
+        timestamp: toText(item.createdAt),
+      };
+    })
+    .filter((item) => !!item.reservationId)
+    .sort((a, b) => {
+      const aDate = new Date(a.timestamp).getTime();
+      const bDate = new Date(b.timestamp).getTime();
+      return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+    });
+};
+
+const markChatAsRead = async (chatId: string, userId: string): Promise<void> => {
+  await graphQlRequest<{
+    markChatAsRead?: boolean;
+  }>(
+    `
+      mutation MarkChatAsReadFromDashboard($chatId: String!, $userId: String!, $userType: String!) {
+        markChatAsRead(chatId: $chatId, userId: $userId, userType: $userType)
+      }
+    `,
+    { chatId, userId, userType: "vendor" },
+  );
+};
+
+const formatNotificationTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "recently";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
 const registerVendorPushToken = async (
   vendorId: string,
   pushToken: string,
@@ -309,9 +454,18 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
+  const [resolvedVendorId, setResolvedVendorId] = useState("");
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationPreviews, setNotificationPreviews] = useState<NotificationPreview[]>([]);
+  const [markingReadChatId, setMarkingReadChatId] = useState("");
+  const [dismissedPreviewReadAt, setDismissedPreviewReadAt] = useState<Record<string, number>>({});
+  const [seenReservationIds, setSeenReservationIds] = useState<Record<string, true>>({});
+  const [reservationUnreadCount, setReservationUnreadCount] = useState(0);
   const isCompactScreen = width < 390;
   const isWideScreen = width >= 860;
   const metricCardWidth = isWideScreen ? "24%" : "48.6%";
+  const totalNotificationCount = unreadCount + reservationUnreadCount;
 
   const vendorId =
     (typeof params.vendor_id === "string" && params.vendor_id) ||
@@ -342,6 +496,7 @@ export default function Dashboard() {
         vendorId: resolvedVendorId,
         email: vendorEmail || vendorSession.email,
       });
+      setResolvedVendorId(resolvedVendorId);
 
       const [analyticsResult, paymentsResult, unreadResult] = await Promise.all([
         loadVendorAnalytics(resolvedVendorId),
@@ -379,6 +534,47 @@ export default function Dashboard() {
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
+
+  useEffect(() => {
+    const socketVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+    if (!socketVendorId) return;
+
+    const socket = getChatSocket();
+    if (!socket) return;
+
+    const syncUnreadCount = async () => {
+      try {
+        const nextUnread = await loadUnreadMessageCount(socketVendorId);
+        setUnreadCount(toNumber(nextUnread, 0));
+      } catch {
+        // Keep current badge if polling on connect fails.
+      }
+    };
+
+    const handleConnect = () => {
+      socket.emit("register", {
+        userId: socketVendorId,
+        userType: "vendor",
+      });
+      void syncUnreadCount();
+    };
+
+    const handleUnreadCount = (payload?: { count?: unknown }) => {
+      setUnreadCount(toNumber(payload?.count, 0));
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("unreadCount", handleUnreadCount);
+
+    if (socket.connected) {
+      handleConnect();
+    }
+
+    return () => {
+      socket.off("connect", handleConnect);
+      socket.off("unreadCount", handleUnreadCount);
+    };
+  }, [resolvedVendorId, vendorId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -485,24 +681,126 @@ export default function Dashboard() {
     [analytics.totalUniqueViews, totalBookings, totalPackages, totalRevenue],
   );
 
-  const handleNotifications = () => {
-    router.push("/(tabs)/chat");
-  };
-
-  const handleExitApp = () => {
-    if (Platform.OS === "android") {
-      Alert.alert("Exit App", "Do you want to close the app?", [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Exit",
-          style: "destructive",
-          onPress: () => BackHandler.exitApp(),
-        },
-      ]);
+  const refreshNotificationPreviews = useCallback(async () => {
+    const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+    if (!targetVendorId) {
+      setNotificationPreviews([]);
+      setReservationUnreadCount(0);
       return;
     }
 
-    Alert.alert("Exit App", "App exit is only supported on Android.");
+    setNotificationsLoading(true);
+    try {
+      const [chatPreviews, reservationPreviews] = await Promise.all([
+        loadNotificationPreviews(targetVendorId),
+        loadReservationNotificationPreviews(targetVendorId),
+      ]);
+
+      const filteredChatPreviews = chatPreviews.filter((item) => {
+        const chatId = toText(item.chatId);
+        if (!chatId) return false;
+        const dismissedAt = dismissedPreviewReadAt[chatId];
+        if (!dismissedAt) return true;
+        const itemTime = new Date(item.timestamp).getTime();
+        if (Number.isNaN(itemTime)) return false;
+        return itemTime > dismissedAt;
+      });
+
+      const filteredReservationPreviews = reservationPreviews.filter((item) => {
+        const reservationId = toText(item.reservationId);
+        return !!reservationId && !seenReservationIds[reservationId];
+      });
+
+      setReservationUnreadCount(filteredReservationPreviews.length);
+      setNotificationPreviews(
+        [...filteredChatPreviews, ...filteredReservationPreviews].sort((a, b) => {
+          const aDate = new Date(a.timestamp).getTime();
+          const bDate = new Date(b.timestamp).getTime();
+          return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+        }),
+      );
+    } catch {
+      setNotificationPreviews([]);
+      setReservationUnreadCount(0);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, [dismissedPreviewReadAt, resolvedVendorId, seenReservationIds, vendorId]);
+
+  const handleNotifications = () => {
+    setNotificationsOpen(true);
+    void refreshNotificationPreviews();
+  };
+
+  const handleOpenChatFromNotification = useCallback(
+    (chatId: string) => {
+      setNotificationsOpen(false);
+      router.push({
+        pathname: "/(tabs)/chat",
+        params: { chatId },
+      });
+    },
+    [router],
+  );
+
+  const handleMarkAsRead = useCallback(
+    async (chatId: string, timestamp: string) => {
+      const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+      if (!targetVendorId) return;
+
+      setMarkingReadChatId(chatId);
+      try {
+        await markChatAsRead(chatId, targetVendorId);
+        const markedAt = new Date(timestamp).getTime();
+        setDismissedPreviewReadAt((current) => ({
+          ...current,
+          [chatId]: Number.isNaN(markedAt) ? Date.now() : markedAt,
+        }));
+        const nextUnreadCount = await loadUnreadMessageCount(targetVendorId);
+        setUnreadCount(toNumber(nextUnreadCount, 0));
+        void refreshNotificationPreviews();
+      } catch {
+        Alert.alert("Unable to mark as read", "Please try again.");
+      } finally {
+        setMarkingReadChatId("");
+      }
+    },
+    [refreshNotificationPreviews, resolvedVendorId, vendorId],
+  );
+
+  const handleMarkReservationSeen = useCallback((reservationId: string) => {
+    if (!reservationId) return;
+    setSeenReservationIds((current) => ({
+      ...current,
+      [reservationId]: true,
+    }));
+    setReservationUnreadCount((current) => (current > 0 ? current - 1 : 0));
+    setNotificationPreviews((current) =>
+      current.filter((item) => !(item.type === "reservation" && item.reservationId === reservationId)),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    void refreshNotificationPreviews();
+  }, [notificationsOpen, unreadCount, refreshNotificationPreviews]);
+
+  useEffect(() => {
+    const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+    if (!targetVendorId) return;
+
+    void refreshNotificationPreviews();
+    const timer = setInterval(() => {
+      void refreshNotificationPreviews();
+    }, 20000);
+
+    return () => clearInterval(timer);
+  }, [refreshNotificationPreviews, resolvedVendorId, vendorId]);
+
+  const handleLogout = () => {
+    clearVendorSession();
+    setNotificationsOpen(false);
+    router.replace("/login");
   };
 
   if (loading) {
@@ -551,18 +849,20 @@ export default function Dashboard() {
               accessibilityLabel="Notifications"
             >
               <Bell size={18} color="#1A2438" />
-              {unreadCount > 0 && (
+              {totalNotificationCount > 0 && (
                 <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{unreadCount > 99 ? "99+" : `${unreadCount}`}</Text>
+                  <Text style={styles.badgeText}>
+                    {totalNotificationCount > 99 ? "99+" : `${totalNotificationCount}`}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.iconButton, styles.exitButton]}
-              onPress={handleExitApp}
+              onPress={handleLogout}
               activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityLabel="Exit app"
+              accessibilityLabel="Log out"
             >
               <LogOut size={18} color="#FFFFFF" />
             </TouchableOpacity>
@@ -646,6 +946,100 @@ export default function Dashboard() {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={notificationsOpen}
+        onRequestClose={() => setNotificationsOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setNotificationsOpen(false)}>
+          <Pressable style={styles.notificationModal} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.notificationHeader}>
+              <Text style={styles.notificationTitle}>
+                Notifications
+                {totalNotificationCount > 0
+                  ? ` (${totalNotificationCount > 99 ? "99+" : totalNotificationCount})`
+                  : ""}
+              </Text>
+              <TouchableOpacity onPress={() => setNotificationsOpen(false)} activeOpacity={0.8}>
+                <Text style={styles.notificationClose}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            {notificationsLoading ? (
+              <View style={styles.notificationState}>
+                <ActivityIndicator size="small" color="#FC7B54" />
+              </View>
+            ) : notificationPreviews.length ? (
+              <ScrollView style={styles.notificationList} showsVerticalScrollIndicator={false}>
+                {notificationPreviews.map((item) => {
+                  const isChat = item.type === "chat";
+                  const fromVisitor = toText(item.senderType).toLowerCase() !== "vendor";
+                  return (
+                    <View key={`${item.id}-${item.timestamp}`} style={styles.notificationItem}>
+                      <Text style={styles.notificationItemTitle}>{item.title}</Text>
+                      <Text style={styles.notificationItemMessage} numberOfLines={2}>
+                        {item.message}
+                      </Text>
+                      <Text style={styles.notificationItemTime}>
+                        {formatNotificationTime(item.timestamp)}
+                      </Text>
+                      <View style={styles.notificationActions}>
+                        <TouchableOpacity
+                          style={styles.notificationOpenButton}
+                          onPress={() => {
+                            if (item.chatId) {
+                              handleOpenChatFromNotification(item.chatId);
+                            } else {
+                              setNotificationsOpen(false);
+                              router.push("/(tabs)/resavations");
+                            }
+                          }}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.notificationOpenText}>
+                            {isChat ? "Open Chat" : "Open Reservations"}
+                          </Text>
+                        </TouchableOpacity>
+                        {isChat && fromVisitor && item.chatId && (
+                          <TouchableOpacity
+                            style={[
+                              styles.notificationReadButton,
+                              markingReadChatId === item.chatId &&
+                                styles.notificationReadButtonDisabled,
+                            ]}
+                            onPress={() => handleMarkAsRead(item.chatId, item.timestamp)}
+                            activeOpacity={0.85}
+                            disabled={markingReadChatId === item.chatId}
+                          >
+                            <Text style={styles.notificationReadText}>
+                              {markingReadChatId === item.chatId ? "Marking..." : "Mark as read"}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                        {!isChat && item.reservationId && (
+                          <TouchableOpacity
+                            style={styles.notificationReadButton}
+                            onPress={() => handleMarkReservationSeen(item.reservationId)}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={styles.notificationReadText}>Mark as read</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <View style={styles.notificationState}>
+                <Text style={styles.notificationEmpty}>No unread messages right now.</Text>
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -681,6 +1075,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#E8EDF5",
+    overflow: "visible",
   },
   badge: {
     position: "absolute",
@@ -695,6 +1090,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderWidth: 1,
     borderColor: "#FFFFFF",
+    zIndex: 3,
+    elevation: 3,
   },
   badgeText: {
     fontFamily: "Montserrat_600SemiBold",
@@ -877,5 +1274,108 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontFamily: "Outfit_700Bold",
     fontSize: 14,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(17, 24, 39, 0.4)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: Platform.OS === "web" ? 70 : 58,
+    paddingRight: 16,
+  },
+  notificationModal: {
+    width: "92%",
+    maxWidth: 360,
+    maxHeight: 480,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E8EDF5",
+    padding: 14,
+  },
+  notificationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  notificationTitle: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 18,
+    color: "#1A2438",
+  },
+  notificationClose: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#FC7B54",
+  },
+  notificationList: {
+    maxHeight: 390,
+  },
+  notificationItem: {
+    borderWidth: 1,
+    borderColor: "#E8EDF5",
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 8,
+    backgroundColor: "#FFFDFB",
+  },
+  notificationItemTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#5B6E8B",
+  },
+  notificationItemMessage: {
+    marginTop: 4,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "#1F2937",
+  },
+  notificationItemTime: {
+    marginTop: 6,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "#6B7280",
+  },
+  notificationActions: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  notificationOpenButton: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: "#EAF4FF",
+  },
+  notificationOpenText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#2563EB",
+  },
+  notificationReadButton: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: "#FFF1E8",
+  },
+  notificationReadButtonDisabled: {
+    opacity: 0.55,
+  },
+  notificationReadText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#FC7B54",
+  },
+  notificationState: {
+    minHeight: 120,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notificationEmpty: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "#6B7280",
   },
 });
