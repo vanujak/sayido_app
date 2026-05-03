@@ -1,19 +1,44 @@
 import Constants from "expo-constants";
 import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
 let cachedToken = "";
+let notificationHandlerConfigured = false;
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+type NotificationsModule = typeof import("expo-notifications");
+type ExpoRuntimeConstants = {
+  appOwnership?: string | null;
+  executionEnvironment?: string;
+  expoVersion?: string | null;
+};
+
+export const canUseNativePushNotifications = () => {
+  const constants = Constants as ExpoRuntimeConstants;
+  const isExpoGo =
+    constants.appOwnership === "expo" ||
+    (constants.executionEnvironment === "storeClient" && !!constants.expoVersion);
+  return Platform.OS !== "web" && !isExpoGo;
+};
+
+const getNotificationsModule = async (): Promise<NotificationsModule | null> => {
+  if (!canUseNativePushNotifications()) return null;
+
+  const Notifications = await import("expo-notifications");
+  if (!notificationHandlerConfigured) {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+    notificationHandlerConfigured = true;
+  }
+
+  return Notifications;
+};
 
 const getProjectId = () => {
   const fromEasConfig = Constants?.easConfig?.projectId;
@@ -26,8 +51,11 @@ const getProjectId = () => {
 
 export const registerForPushNotificationsAsync = async (): Promise<string> => {
   if (cachedToken) return cachedToken;
-  if (Platform.OS === "web") return "";
+  if (!canUseNativePushNotifications()) return "";
   if (!Device.isDevice) return "";
+
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) return "";
 
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("default", {

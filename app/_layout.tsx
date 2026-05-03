@@ -11,8 +11,8 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
+import { canUseNativePushNotifications } from "@/lib/push-notifications";
 import { Stack, useRouter } from "expo-router";
-import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -51,22 +51,32 @@ export default function RootLayout() {
   }, [loaded]);
 
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data as {
-        type?: string;
-        chatId?: string;
-      };
+    if (!canUseNativePushNotifications()) return;
 
-      if (data?.type === "chat_message" && typeof data.chatId === "string" && data.chatId) {
-        router.push({
-          pathname: "/(tabs)/chat",
-          params: { chatId: data.chatId },
-        });
-      }
+    let subscription: { remove: () => void } | undefined;
+    let mounted = true;
+
+    void import("expo-notifications").then((Notifications) => {
+      if (!mounted) return;
+
+      subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data as {
+          type?: string;
+          chatId?: string;
+        };
+
+        if (data?.type === "chat_message" && typeof data.chatId === "string" && data.chatId) {
+          router.push({
+            pathname: "/(tabs)/chat",
+            params: { chatId: data.chatId },
+          });
+        }
+      });
     });
 
     return () => {
-      subscription.remove();
+      mounted = false;
+      subscription?.remove();
     };
   }, [router]);
 

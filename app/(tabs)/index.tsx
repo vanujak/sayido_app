@@ -281,6 +281,19 @@ const loadUnreadMessageCount = async (vendorId: string): Promise<number> => {
   return toNumber(data.getUnreadMessageCount, 0);
 };
 
+const getUnreadCountFromSocketPayload = (payload: unknown) => {
+  if (typeof payload === "number" || typeof payload === "string") {
+    return toNumber(payload, 0);
+  }
+
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    return toNumber(record.count ?? record.unreadCount ?? record.total, 0);
+  }
+
+  return 0;
+};
+
 const loadNotificationPreviews = async (vendorId: string): Promise<NotificationPreview[]> => {
   const data = await graphQlRequest<{
     getVendorChats?: Array<{
@@ -559,8 +572,8 @@ export default function Dashboard() {
       void syncUnreadCount();
     };
 
-    const handleUnreadCount = (payload?: { count?: unknown }) => {
-      setUnreadCount(toNumber(payload?.count, 0));
+    const handleUnreadCount = (payload?: unknown) => {
+      setUnreadCount(getUnreadCountFromSocketPayload(payload));
     };
 
     socket.on("connect", handleConnect);
@@ -691,10 +704,13 @@ export default function Dashboard() {
 
     setNotificationsLoading(true);
     try {
-      const [chatPreviews, reservationPreviews] = await Promise.all([
+      const [chatResult, reservationResult] = await Promise.allSettled([
         loadNotificationPreviews(targetVendorId),
         loadReservationNotificationPreviews(targetVendorId),
       ]);
+      const chatPreviews = chatResult.status === "fulfilled" ? chatResult.value : [];
+      const reservationPreviews =
+        reservationResult.status === "fulfilled" ? reservationResult.value : [];
 
       const filteredChatPreviews = chatPreviews.filter((item) => {
         const chatId = toText(item.chatId);
@@ -756,16 +772,19 @@ export default function Dashboard() {
           ...current,
           [chatId]: Number.isNaN(markedAt) ? Date.now() : markedAt,
         }));
+        setNotificationPreviews((current) =>
+          current.filter((item) => !(item.type === "chat" && item.chatId === chatId)),
+        );
+        setUnreadCount((current) => (current > 0 ? current - 1 : 0));
         const nextUnreadCount = await loadUnreadMessageCount(targetVendorId);
         setUnreadCount(toNumber(nextUnreadCount, 0));
-        void refreshNotificationPreviews();
       } catch {
         Alert.alert("Unable to mark as read", "Please try again.");
       } finally {
         setMarkingReadChatId("");
       }
     },
-    [refreshNotificationPreviews, resolvedVendorId, vendorId],
+    [resolvedVendorId, vendorId],
   );
 
   const handleMarkReservationSeen = useCallback((reservationId: string) => {

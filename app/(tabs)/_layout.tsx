@@ -8,13 +8,17 @@ import {
 } from "lucide-react-native";
 import React from "react";
 import { Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
   // Design system colors
   const activeColor = "#FC7B54"; // Brand Orange
   const inactiveColor = "#9CA3AF"; // Gray
+  const bottomInset = Math.max(insets.bottom, Platform.OS === "android" ? 16 : 0);
+  const tabBarHeight = 64 + bottomInset;
 
   return (
     <Tabs
@@ -36,7 +40,8 @@ export default function TabLayout() {
             left: 14,
             right: 14,
             bottom: 12,
-            height: 70,
+            height: tabBarHeight,
+            paddingBottom: bottomInset,
             borderTopWidth: 0,
             borderRadius: 22,
             backgroundColor: "#FFFFFF",
@@ -46,7 +51,8 @@ export default function TabLayout() {
             shadowRadius: 18,
           },
           default: {
-            height: 70,
+            height: tabBarHeight,
+            paddingBottom: bottomInset,
             borderTopWidth: 1,
             borderTopColor: "#EEF1F5",
             backgroundColor: "#FFFFFF",
