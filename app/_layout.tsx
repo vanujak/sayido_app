@@ -90,6 +90,10 @@ export default function RootLayout() {
         <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
           <Stack>
             <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="forgot-password"
+              options={{ headerShown: false }}
+            />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen
               name="modal"

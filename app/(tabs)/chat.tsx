@@ -725,7 +725,7 @@ export default function ChatScreen() {
               {activeChat.offeringName}
             </Text>
           </View>
-          <ScrollView contentContainerStyle={styles.messagesList}>
+          <ScrollView style={styles.messagesScroll} contentContainerStyle={styles.messagesList}>
             {activeChat.messages.length ? (
               activeChat.messages.map((message, index) => {
                 const mine = message.senderType.toLowerCase() === "vendor";
@@ -802,6 +802,18 @@ export default function ChatScreen() {
     );
   }, [activeChat, errorMessage, handleSendReply, loading, replyText, rows, sendError, sending]);
 
+  if (activeChat) {
+    return (
+      <View style={styles.screen}>
+        <View style={[styles.container, styles.chatScreenContainer]}>
+          <Text style={styles.pageTitle}>Vendor Chats</Text>
+          <Text style={styles.pageSubtitle}>Messages with couples and clients</Text>
+          {content}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -828,6 +840,10 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 28,
   },
+  chatScreenContainer: {
+    flex: 1,
+    paddingBottom: Platform.OS === "ios" ? 92 : 16,
+  },
   pageTitle: {
     fontFamily: "Outfit_700Bold",
     fontSize: 28,
@@ -844,7 +860,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   chatDetail: {
-    minHeight: 420,
+    flex: 1,
     gap: 10,
   },
   backButton: {
@@ -878,9 +894,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6B7280",
   },
+  messagesScroll: {
+    flex: 1,
+  },
   messagesList: {
+    flexGrow: 1,
     gap: 8,
     paddingVertical: 4,
+    paddingBottom: 8,
   },
   messageBubble: {
     maxWidth: "85%",

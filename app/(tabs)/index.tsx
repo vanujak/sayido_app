@@ -57,6 +57,13 @@ type NotificationPreview = {
   senderType?: string;
 };
 
+type NotificationReadState = {
+  dismissedPreviewReadAt: Record<string, number>;
+  seenReservationIds: Record<string, true>;
+};
+
+const NOTIFICATION_READ_STATE_KEY = "__sayido_notification_read_state__";
+
 const toText = (value: unknown, fallback = "") =>
   typeof value === "string" && value.trim() ? value : fallback;
 
@@ -67,6 +74,67 @@ const toNumber = (value: unknown, fallback = 0) => {
     return Number.isFinite(parsed) ? parsed : fallback;
   }
   return fallback;
+};
+
+const readNotificationStateStore = (): Record<string, NotificationReadState> => {
+  const globalState = globalThis as {
+    [NOTIFICATION_READ_STATE_KEY]?: Record<string, NotificationReadState>;
+  };
+  if (globalState[NOTIFICATION_READ_STATE_KEY]) {
+    return globalState[NOTIFICATION_READ_STATE_KEY] || {};
+  }
+
+  if (typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem(NOTIFICATION_READ_STATE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, NotificationReadState>;
+        if (parsed && typeof parsed === "object") {
+          globalState[NOTIFICATION_READ_STATE_KEY] = parsed;
+          return parsed;
+        }
+      }
+    } catch {
+      // Ignore stored state parse errors.
+    }
+  }
+
+  globalState[NOTIFICATION_READ_STATE_KEY] = {};
+  return {};
+};
+
+const writeNotificationStateStore = (store: Record<string, NotificationReadState>) => {
+  const globalState = globalThis as {
+    [NOTIFICATION_READ_STATE_KEY]?: Record<string, NotificationReadState>;
+  };
+  globalState[NOTIFICATION_READ_STATE_KEY] = store;
+
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(NOTIFICATION_READ_STATE_KEY, JSON.stringify(store));
+  } catch {
+    // Ignore storage errors.
+  }
+};
+
+const getNotificationReadState = (vendorId: string): NotificationReadState => {
+  if (!vendorId) {
+    return { dismissedPreviewReadAt: {}, seenReservationIds: {} };
+  }
+
+  const state = readNotificationStateStore()[vendorId];
+  return {
+    dismissedPreviewReadAt: state?.dismissedPreviewReadAt || {},
+    seenReservationIds: state?.seenReservationIds || {},
+  };
+};
+
+const setNotificationReadState = (vendorId: string, state: NotificationReadState) => {
+  if (!vendorId) return;
+  writeNotificationStateStore({
+    ...readNotificationStateStore(),
+    [vendorId]: state,
+  });
 };
 
 const monthShort = (value: string) => {
@@ -493,6 +561,7 @@ export default function Dashboard() {
     (typeof params.email === "string" && params.email) ||
     vendorSession.email ||
     "";
+  const notificationStateVendorId = resolvedVendorId || vendorId || vendorSession.vendorId || "";
 
   const vendorName = `${toText(params.fname, "Vendor")} ${toText(params.lname)}`.trim();
 
@@ -547,6 +616,12 @@ export default function Dashboard() {
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
+
+  useEffect(() => {
+    const readState = getNotificationReadState(notificationStateVendorId);
+    setDismissedPreviewReadAt(readState.dismissedPreviewReadAt);
+    setSeenReservationIds(readState.seenReservationIds);
+  }, [notificationStateVendorId]);
 
   useEffect(() => {
     const socketVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
@@ -704,23 +779,29 @@ export default function Dashboard() {
 
     setNotificationsLoading(true);
     try {
-      const [chatResult, reservationResult] = await Promise.allSettled([
+      const [chatResult, reservationResult, unreadResult] = await Promise.allSettled([
         loadNotificationPreviews(targetVendorId),
         loadReservationNotificationPreviews(targetVendorId),
+        loadUnreadMessageCount(targetVendorId),
       ]);
       const chatPreviews = chatResult.status === "fulfilled" ? chatResult.value : [];
       const reservationPreviews =
         reservationResult.status === "fulfilled" ? reservationResult.value : [];
+      const latestUnreadCount = unreadResult.status === "fulfilled" ? toNumber(unreadResult.value) : unreadCount;
 
-      const filteredChatPreviews = chatPreviews.filter((item) => {
-        const chatId = toText(item.chatId);
-        if (!chatId) return false;
-        const dismissedAt = dismissedPreviewReadAt[chatId];
-        if (!dismissedAt) return true;
-        const itemTime = new Date(item.timestamp).getTime();
-        if (Number.isNaN(itemTime)) return false;
-        return itemTime > dismissedAt;
-      });
+      const filteredChatPreviews =
+        latestUnreadCount > 0
+          ? chatPreviews.filter((item) => {
+              const chatId = toText(item.chatId);
+              if (!chatId) return false;
+              const dismissedAt = dismissedPreviewReadAt[chatId];
+              if (!dismissedAt) return true;
+              const itemTime = new Date(item.timestamp).getTime();
+              if (Number.isNaN(itemTime)) return false;
+              return itemTime > dismissedAt;
+            })
+          : [];
+      setUnreadCount(filteredChatPreviews.length ? latestUnreadCount : 0);
 
       const filteredReservationPreviews = reservationPreviews.filter((item) => {
         const reservationId = toText(item.reservationId);
@@ -741,7 +822,7 @@ export default function Dashboard() {
     } finally {
       setNotificationsLoading(false);
     }
-  }, [dismissedPreviewReadAt, resolvedVendorId, seenReservationIds, vendorId]);
+  }, [dismissedPreviewReadAt, resolvedVendorId, seenReservationIds, unreadCount, vendorId]);
 
   const handleNotifications = () => {
     setNotificationsOpen(true);
@@ -768,16 +849,23 @@ export default function Dashboard() {
       try {
         await markChatAsRead(chatId, targetVendorId);
         const markedAt = new Date(timestamp).getTime();
+        const dismissedAt = Number.isNaN(markedAt) ? Date.now() : markedAt;
         setDismissedPreviewReadAt((current) => ({
           ...current,
-          [chatId]: Number.isNaN(markedAt) ? Date.now() : markedAt,
+          [chatId]: dismissedAt,
         }));
+        const readState = getNotificationReadState(targetVendorId);
+        setNotificationReadState(targetVendorId, {
+          dismissedPreviewReadAt: {
+            ...readState.dismissedPreviewReadAt,
+            [chatId]: dismissedAt,
+          },
+          seenReservationIds: readState.seenReservationIds,
+        });
         setNotificationPreviews((current) =>
           current.filter((item) => !(item.type === "chat" && item.chatId === chatId)),
         );
         setUnreadCount((current) => (current > 0 ? current - 1 : 0));
-        const nextUnreadCount = await loadUnreadMessageCount(targetVendorId);
-        setUnreadCount(toNumber(nextUnreadCount, 0));
       } catch {
         Alert.alert("Unable to mark as read", "Please try again.");
       } finally {
@@ -789,15 +877,26 @@ export default function Dashboard() {
 
   const handleMarkReservationSeen = useCallback((reservationId: string) => {
     if (!reservationId) return;
+    const targetVendorId = notificationStateVendorId || getVendorSession().vendorId || "";
     setSeenReservationIds((current) => ({
       ...current,
       [reservationId]: true,
     }));
+    if (targetVendorId) {
+      const readState = getNotificationReadState(targetVendorId);
+      setNotificationReadState(targetVendorId, {
+        dismissedPreviewReadAt: readState.dismissedPreviewReadAt,
+        seenReservationIds: {
+          ...readState.seenReservationIds,
+          [reservationId]: true,
+        },
+      });
+    }
     setReservationUnreadCount((current) => (current > 0 ? current - 1 : 0));
     setNotificationPreviews((current) =>
       current.filter((item) => !(item.type === "reservation" && item.reservationId === reservationId)),
     );
-  }, []);
+  }, [notificationStateVendorId]);
 
   useEffect(() => {
     if (!notificationsOpen) return;
