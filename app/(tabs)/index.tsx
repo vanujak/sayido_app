@@ -163,7 +163,7 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 0,
   })}`;
 
-const graphQlRequest = async <TData>(
+const graphQlRequest = async <TData,>(
   query: string,
   variables: Record<string, unknown>,
 ): Promise<TData> => {
@@ -245,6 +245,41 @@ const loadVendorIdByEmail = async (email: string): Promise<string> => {
   );
 
   return toText(data.findVendorByEmail?.id);
+};
+
+const loadVendorProfile = async (
+  vendorId: string,
+): Promise<{
+  fname?: string;
+  lname?: string;
+  busname?: string;
+} | null> => {
+  if (!vendorId) return null;
+  try {
+    const data = await graphQlRequest<{
+      findVendorById?: {
+        id?: string;
+        fname?: string;
+        lname?: string;
+        busname?: string;
+      } | null;
+    }>(
+      `
+        query GetVendorProfileForDashboard($id: String!) {
+          findVendorById(id: $id) {
+            id
+            fname
+            lname
+            busname
+          }
+        }
+      `,
+      { id: vendorId },
+    );
+    return data.findVendorById || null;
+  } catch {
+    return null;
+  }
 };
 
 const loadVendorAnalytics = async (vendorId: string): Promise<VendorAnalytics> => {
@@ -543,6 +578,11 @@ export default function Dashboard() {
   const [dismissedPreviewReadAt, setDismissedPreviewReadAt] = useState<Record<string, number>>({});
   const [seenReservationIds, setSeenReservationIds] = useState<Record<string, true>>({});
   const [reservationUnreadCount, setReservationUnreadCount] = useState(0);
+  const [vendorProfile, setVendorProfile] = useState<{
+    fname?: string;
+    lname?: string;
+    busname?: string;
+  } | null>(null);
   const isCompactScreen = width < 390;
   const isWideScreen = width >= 860;
   const metricCardWidth = isWideScreen ? "24%" : "48.6%";
@@ -563,7 +603,11 @@ export default function Dashboard() {
     "";
   const notificationStateVendorId = resolvedVendorId || vendorId || vendorSession.vendorId || "";
 
-  const vendorName = `${toText(params.fname, "Vendor")} ${toText(params.lname)}`.trim();
+  const firstName =
+    vendorProfile?.fname?.trim() ||
+    toText(params.fname).trim() ||
+    "";
+  const vendorName = firstName || "Vendor";
 
   const loadDashboardData = useCallback(async () => {
     setErrorMessage("");
@@ -580,15 +624,19 @@ export default function Dashboard() {
       });
       setResolvedVendorId(resolvedVendorId);
 
-      const [analyticsResult, paymentsResult, unreadResult] = await Promise.all([
+      const [analyticsResult, paymentsResult, unreadResult, profileResult] = await Promise.all([
         loadVendorAnalytics(resolvedVendorId),
         loadVendorPayments(resolvedVendorId),
         loadUnreadMessageCount(resolvedVendorId),
+        loadVendorProfile(resolvedVendorId),
       ]);
 
       setAnalytics(analyticsResult);
       setPayments(paymentsResult);
       setUnreadCount(toNumber(unreadResult, 0));
+      if (profileResult) {
+        setVendorProfile(profileResult);
+      }
 
       void (async () => {
         try {
@@ -668,21 +716,27 @@ export default function Dashboard() {
     useCallback(() => {
       let active = true;
 
-      const refreshUnreadCount = async () => {
+      const refreshDashboardSummary = async () => {
         try {
           const resolvedVendorId =
             vendorId || (await loadVendorIdByEmail(vendorEmail)) || readVendorIdFromCookie();
           if (!resolvedVendorId || !active) return;
-          const nextUnread = await loadUnreadMessageCount(resolvedVendorId);
+          const [nextUnread, nextProfile] = await Promise.all([
+            loadUnreadMessageCount(resolvedVendorId),
+            loadVendorProfile(resolvedVendorId),
+          ]);
           if (active) {
             setUnreadCount(toNumber(nextUnread, 0));
+            if (nextProfile) {
+              setVendorProfile(nextProfile);
+            }
           }
         } catch {
-          // Keep existing badge state on transient failures.
+          // Keep existing state on transient failures.
         }
       };
 
-      void refreshUnreadCount();
+      void refreshDashboardSummary();
       return () => {
         active = false;
       };

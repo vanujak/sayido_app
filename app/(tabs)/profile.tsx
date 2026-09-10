@@ -1,7 +1,13 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { clearVendorSession } from "@/lib/vendor-session";
+import { apiCredentials, graphQlUrl } from "@/lib/api-config";
+import { clearVendorSession, getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { useFocusEffect } from "@react-navigation/native";
+import { useGlobalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Image,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -22,46 +28,237 @@ type VendorProfile = {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const params = useGlobalSearchParams<{
+    id?: string;
+    vendor_id?: string;
+    vendorId?: string;
+    email?: string;
+    vendor_email?: string;
+    fname?: string;
+    lname?: string;
+    busname?: string;
+    phone?: string;
+    city?: string;
+    location?: string;
+    about?: string;
+    profile_pic_url?: string;
+  }>();
 
+  const [profile, setProfile] = useState<Partial<VendorProfile> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const loadProfile = useCallback(async () => {
+    if (!graphQlUrl) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    const session = getVendorSession();
+    const vendorId =
+      (typeof params.vendor_id === "string" && params.vendor_id) ||
+      (typeof params.vendorId === "string" && params.vendorId) ||
+      (typeof params.id === "string" && params.id) ||
+      session.vendorId ||
+      process.env.EXPO_PUBLIC_VENDOR_ID ||
+      "";
+
+    const vendorEmail =
+      (typeof params.vendor_email === "string" && params.vendor_email) ||
+      (typeof params.email === "string" && params.email) ||
+      session.email ||
+      "";
+
+    try {
+      // 1. If we have a vendorId, fetch directly by ID
+      if (vendorId) {
+        const res = await fetch(graphQlUrl, {
+          method: "POST",
+          credentials: apiCredentials,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: `
+              query GetVendorProfileById($id: String!) {
+                findVendorById(id: $id) {
+                  id
+                  email
+                  fname
+                  lname
+                  busname
+                  phone
+                  city
+                  location
+                  about
+                  profile_pic_url
+                }
+              }
+            `,
+            variables: { id: vendorId },
+          }),
+        });
+
+        const payload = await res.json();
+        if (payload?.data?.findVendorById) {
+          const v = payload.data.findVendorById;
+          setProfile({
+            fname: v.fname,
+            lname: v.lname,
+            email: v.email,
+            busname: v.busname,
+            phone: v.phone,
+            city: v.city,
+            location: v.location,
+            about: v.about,
+            profilePicUrl: v.profile_pic_url || "",
+          });
+          setImageError(false);
+          setVendorSession({
+            vendorId: v.id,
+            email: v.email,
+          });
+          return;
+        }
+      }
+
+      // 2. If vendorId is missing or lookup failed, query all vendors to match by email
+      const targetEmail = (vendorEmail || "test@gmail.com").trim().toLowerCase();
+      const allRes = await fetch(graphQlUrl, {
+        method: "POST",
+        credentials: apiCredentials,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: `
+            query GetAllVendorsForProfile {
+              findAllVendors {
+                id
+                email
+                fname
+                lname
+                busname
+                phone
+                city
+                location
+                about
+                profile_pic_url
+              }
+            }
+          `,
+        }),
+      });
+
+      const allPayload = await allRes.json();
+      const vendors = allPayload?.data?.findAllVendors;
+      if (Array.isArray(vendors) && vendors.length > 0) {
+        const matched =
+          vendors.find(
+            (v: { email?: string }) => v.email && v.email.toLowerCase() === targetEmail
+          ) || vendors[0];
+
+        if (matched) {
+          setProfile({
+            fname: matched.fname,
+            lname: matched.lname,
+            email: matched.email,
+            busname: matched.busname,
+            phone: matched.phone,
+            city: matched.city,
+            location: matched.location,
+            about: matched.about,
+            profilePicUrl: matched.profile_pic_url || "",
+          });
+          setImageError(false);
+          setVendorSession({
+            vendorId: matched.id,
+            email: matched.email,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load vendor profile:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [params.id, params.vendor_id, params.vendorId, params.email, params.vendor_email]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+    }, [loadProfile])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadProfile();
+  };
+
+  const session = getVendorSession();
   const vendor: VendorProfile = {
-    fname: String(params.fname ?? "Vendor"),
-    lname: String(params.lname ?? "Test"),
-    email: String(params.email ?? "test@gmail.com"),
-    busname: String(params.busname ?? "Test Vendor"),
-    phone: String(params.phone ?? "0771234567"),
-    city: String(params.city ?? "Ratnapura"),
-    location: String(params.location ?? "Ratnapura, Sri Lanka"),
-    about: String(
-      params.about ??
-        "Professional wedding vendor focused on quality service and reliable communication.",
-    ),
-    profilePicUrl: String(params.profile_pic_url ?? ""),
+    fname: profile?.fname || String(params.fname ?? "Vendor"),
+    lname: profile?.lname || String(params.lname ?? ""),
+    email: profile?.email || String(params.email ?? session.email ?? "test@gmail.com"),
+    busname: profile?.busname || String(params.busname ?? "Test Vendor"),
+    phone: profile?.phone || String(params.phone ?? ""),
+    city: profile?.city || String(params.city ?? ""),
+    location: profile?.location || String(params.location ?? ""),
+    about:
+      profile?.about ||
+      String(
+        params.about ??
+          "Professional wedding vendor focused on quality service and reliable communication."
+      ),
+    profilePicUrl: profile?.profilePicUrl || String(params.profile_pic_url ?? ""),
   };
 
   const fullName = `${vendor.fname} ${vendor.lname}`.trim();
-  const initials =
-    `${vendor.fname.charAt(0)}${vendor.lname.charAt(0)}`.toUpperCase();
+  const initials = `${vendor.fname.charAt(0)}${vendor.lname.charAt(0)}`.toUpperCase();
 
   const handleLogout = () => {
     clearVendorSession();
     router.replace("/login");
   };
 
+  const hasAvatar = Boolean(vendor.profilePicUrl && !imageError);
+
+  if (loading && !profile) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color="#FC7B54" />
+          <Text style={styles.stateText}>Loading profile...</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.screen}>
-      <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.headerCard}>
-          {vendor.profilePicUrl ? (
-            <Image
-              source={{ uri: vendor.profilePicUrl }}
-              style={styles.avatarImage}
-            />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.avatarText}>{initials || "V"}</Text>
-            </View>
-          )}
+          <View style={styles.avatarRing}>
+            {hasAvatar ? (
+              <Image
+                source={{ uri: vendor.profilePicUrl }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.avatarText}>{initials || "V"}</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.name}>{fullName}</Text>
           <Text style={styles.business}>{vendor.busname}</Text>
           <Text style={styles.email}>{vendor.email}</Text>
@@ -69,9 +266,9 @@ export default function ProfileScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Contact</Text>
-          <InfoRow label="Phone" value={vendor.phone} />
-          <InfoRow label="City" value={vendor.city} />
-          <InfoRow label="Location" value={vendor.location} />
+          <InfoRow label="Phone" value={vendor.phone || "Not specified"} />
+          <InfoRow label="City" value={vendor.city || "Not specified"} />
+          <InfoRow label="Location" value={vendor.location || "Not specified"} />
         </View>
 
         <View style={styles.section}>
@@ -80,7 +277,7 @@ export default function ProfileScreen() {
             label="About"
             value={vendor.about || "No description added yet."}
             multiline
-            maxLines={2}
+            maxLines={4}
           />
         </View>
 
@@ -91,7 +288,7 @@ export default function ProfileScreen() {
         >
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -126,42 +323,62 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF8F3",
   },
   container: {
-    flex: 1,
+    flexGrow: 1,
     padding: 20,
-    paddingBottom: 14,
+    paddingBottom: 24,
+  },
+  centerState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "#FFF8F3",
+  },
+  stateText: {
+    marginTop: 10,
+    color: "#6B7280",
+    fontFamily: "Montserrat_400Regular",
   },
   headerCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     alignItems: "center",
-    padding: 16,
-    marginBottom: 10,
+    padding: 20,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#E8EDF5",
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.05,
     shadowRadius: 14,
     elevation: 2,
   },
+  avatarRing: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: "#FFF3EE",
+    padding: 3,
+    marginBottom: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   avatarImage: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    marginBottom: 10,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   avatarFallback: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: "#FC7B54",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
   },
   avatarText: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 24,
+    fontSize: 28,
     color: "#FFFFFF",
   },
   name: {
@@ -173,7 +390,7 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
     color: "#FC7B54",
-    marginTop: 3,
+    marginTop: 4,
   },
   email: {
     fontFamily: "Montserrat_400Regular",
@@ -182,11 +399,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   section: {
-    flexShrink: 1,
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 12,
-    marginBottom: 10,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#E8EDF5",
     shadowColor: "#0F172A",
@@ -199,10 +415,10 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit_700Bold",
     fontSize: 16,
     color: "#111827",
-    marginBottom: 6,
+    marginBottom: 8,
   },
   row: {
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderTopWidth: 1,
     borderTopColor: "#F3F4F6",
   },
@@ -221,15 +437,15 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   logoutButton: {
-    marginTop: "auto",
+    marginTop: 16,
     backgroundColor: "#111827",
     borderRadius: 14,
-    height: 48,
+    height: 50,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#111827",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 3,
   },
