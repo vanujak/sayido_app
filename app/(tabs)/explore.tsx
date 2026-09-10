@@ -4,6 +4,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import {
   AppState,
   ActivityIndicator,
+  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Check, Package } from "lucide-react-native";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 
@@ -19,6 +21,7 @@ type Offering = {
   name: string;
   category: string;
   description: string;
+  banner?: string | null;
 };
 
 type VendorPackage = {
@@ -30,13 +33,13 @@ type VendorPackage = {
   features: string[];
   requiresReservation: boolean;
   visible: boolean;
+  image?: string | null;
 };
 
 type OfferingWithPackages = {
   offering: Offering;
   packages: VendorPackage[];
 };
-
 const pickList = (value: unknown): Record<string, unknown>[] => {
   if (Array.isArray(value)) return value as Record<string, unknown>[];
   if (!value || typeof value !== "object") return [];
@@ -85,10 +88,10 @@ const formatLkr = (value: number) =>
     maximumFractionDigits: 2,
   })}`;
 
-const graphQlRequest = async <TData>(
+async function graphQlRequest<TData>(
   query: string,
   variables: Record<string, unknown>
-): Promise<TData> => {
+): Promise<TData> {
   if (!graphQlUrl) {
     throw new Error("Missing EXPO_PUBLIC_GRAPHQL_URL");
   }
@@ -133,7 +136,7 @@ const graphQlRequest = async <TData>(
   }
 
   return payload.data;
-};
+}
 
 const readVendorIdFromCookie = () => {
   if (typeof document === "undefined" || typeof atob !== "function") return "";
@@ -162,6 +165,7 @@ const mapOffering = (item: Record<string, unknown>): Offering => ({
   name: toText(item.name, "Untitled offering"),
   category: toText(item.category, "Uncategorized"),
   description: toText(item.description),
+  banner: toText(item.banner) || null,
 });
 
 const loadVendorIdByEmail = async (email: string): Promise<string> => {
@@ -195,6 +199,7 @@ const loadOfferingsByVendor = async (vendorId: string): Promise<Offering[]> => {
           name
           category
           description
+          banner
         }
       }
     `,
@@ -216,6 +221,7 @@ const loadOfferingsFromSession = async (vendorEmail: string): Promise<Offering[]
             name
             category
             description
+            banner
             vendor {
               id
               email
@@ -263,6 +269,7 @@ const parsePackages = (raw: unknown, offeringId: string): VendorPackage[] => {
         features: toFeatures(item.features),
         requiresReservation: Boolean(item.requires_reservation ?? item.requiresReservation),
         visible: item.visible !== false,
+        image: toText(item.image) || null,
       };
     })
     .filter((pkg) => pkg.id && pkg.offeringId === offeringId && pkg.visible);
@@ -282,6 +289,7 @@ const loadPackagesByOffering = async (offeringId: string): Promise<VendorPackage
           features
           visible
           requiresReservation
+          image
           offering {
             id
           }
@@ -293,6 +301,38 @@ const loadPackagesByOffering = async (offeringId: string): Promise<VendorPackage
 
   return parsePackages(data.findPackagesByOffering, offeringId);
 };
+
+function OfferingBannerImage({ uri, alt }: { uri: string; alt: string }) {
+  const [hasError, setHasError] = useState(false);
+  if (hasError || !uri.trim()) return null;
+
+  return (
+    <View style={styles.bannerContainer}>
+      <Image
+        source={{ uri }}
+        style={styles.offeringBanner}
+        resizeMode="cover"
+        onError={() => setHasError(true)}
+      />
+    </View>
+  );
+}
+
+function PackageThumbnailImage({ uri, alt }: { uri?: string | null; alt: string }) {
+  const [hasError, setHasError] = useState(false);
+  if (hasError || !uri?.trim()) return null;
+
+  return (
+    <View style={styles.packageImageContainer}>
+      <Image
+        source={{ uri }}
+        style={styles.packageImage}
+        resizeMode="cover"
+        onError={() => setHasError(true)}
+      />
+    </View>
+  );
+}
 
 export default function PackagesScreen() {
   const vendorSession = getVendorSession();
@@ -435,48 +475,100 @@ export default function PackagesScreen() {
         ) : (
           sections.map((entry) => (
             <View key={entry.offering.id} style={styles.offeringCard}>
-              <Text style={styles.offeringName}>{entry.offering.name}</Text>
-              <Text style={styles.offeringCategory}>{entry.offering.category}</Text>
-              {!!entry.offering.description && (
-                <Text style={styles.offeringDescription}>{entry.offering.description}</Text>
+              {Boolean(entry.offering.banner) && (
+                <OfferingBannerImage
+                  uri={entry.offering.banner!}
+                  alt={entry.offering.name}
+                />
               )}
 
-              {entry.packages.length === 0 ? (
-                <View style={styles.packageCard}>
-                  <Text style={styles.packageDescription}>
-                    No packages yet for this offering.
+              <View style={styles.offeringBody}>
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryBadgeText}>
+                    {entry.offering.category.toUpperCase()}
                   </Text>
                 </View>
-              ) : (
-                entry.packages.map((pkg) => (
-                  <View key={pkg.id} style={styles.packageCard}>
-                    <View style={styles.packageHeader}>
-                      <Text style={styles.packageName}>{pkg.name}</Text>
-                      {pkg.pricing !== null && (
-                        <Text style={styles.packagePrice}>{formatLkr(pkg.pricing)}</Text>
-                      )}
-                    </View>
 
-                    {!!pkg.description && (
-                      <Text style={styles.packageDescription}>{pkg.description}</Text>
-                    )}
+                <Text style={styles.offeringName}>{entry.offering.name}</Text>
 
-                    <Text style={styles.packageMeta}>
-                      {pkg.requiresReservation ? "Requires reservation" : "No reservation required"}
+                {!!entry.offering.description && (
+                  <Text style={styles.offeringDescription}>{entry.offering.description}</Text>
+                )}
+
+                {entry.packages.length === 0 ? (
+                  <View style={styles.noPackagesBox}>
+                    <Package size={20} color="#9CA3AF" />
+                    <Text style={styles.noPackagesText}>
+                      No packages yet for this offering.
                     </Text>
-
-                    {pkg.features.length > 0 && (
-                      <View style={styles.featuresWrap}>
-                        {pkg.features.map((feature, index) => (
-                          <View key={`${pkg.id}-${feature}-${index}`} style={styles.featureTag}>
-                            <Text style={styles.featureText}>{feature}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
                   </View>
-                ))
-              )}
+                ) : (
+                  <View style={styles.packagesList}>
+                    {entry.packages.map((pkg) => (
+                      <View key={pkg.id} style={styles.packageCard}>
+                        {Boolean(pkg.image) && (
+                          <PackageThumbnailImage uri={pkg.image} alt={pkg.name} />
+                        )}
+
+                        <View style={styles.packageHeader}>
+                          <Text style={styles.packageName}>{pkg.name}</Text>
+                          {pkg.pricing !== null && (
+                            <Text style={styles.packagePrice}>{formatLkr(pkg.pricing)}</Text>
+                          )}
+                        </View>
+
+                        {!!pkg.description && (
+                          <Text style={styles.packageDescription}>{pkg.description}</Text>
+                        )}
+
+                        <View style={styles.metaRow}>
+                          <View
+                            style={[
+                              styles.reservationBadge,
+                              pkg.requiresReservation
+                                ? styles.reservationBadgeRequired
+                                : styles.reservationBadgeDirect,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.reservationBadgeText,
+                                pkg.requiresReservation
+                                  ? styles.reservationBadgeTextRequired
+                                  : styles.reservationBadgeTextDirect,
+                              ]}
+                            >
+                              {pkg.requiresReservation ? "Requires reservation" : "Direct booking"}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {pkg.features.length > 0 && (
+                          <View style={styles.featuresContainer}>
+                            <Text style={styles.featuresTitle}>Features:</Text>
+                            <View style={styles.featuresList}>
+                              {pkg.features.map((feature, index) => (
+                                <View
+                                  key={`${pkg.id}-${feature}-${index}`}
+                                  style={styles.featureItem}
+                                >
+                                  <Check
+                                    size={14}
+                                    color="#10B981"
+                                    strokeWidth={2.5}
+                                    style={styles.featureCheck}
+                                  />
+                                  <Text style={styles.featureText}>{feature}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
             </View>
           ))
         )}
@@ -566,86 +658,176 @@ const styles = StyleSheet.create({
   },
   offeringCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "#E8EDF5",
-    padding: 16,
-    marginBottom: 12,
+    marginBottom: 16,
+    overflow: "hidden",
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
     shadowRadius: 12,
-    elevation: 1,
+    elevation: 2,
+  },
+  bannerContainer: {
+    width: "100%",
+    height: 160,
+    backgroundColor: "#F3F4F6",
+    overflow: "hidden",
+  },
+  offeringBanner: {
+    width: "100%",
+    height: "100%",
+  },
+  offeringBody: {
+    padding: 18,
+  },
+  categoryBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#FFF3EE",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  categoryBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+    color: "#FC7B54",
+    letterSpacing: 0.6,
   },
   offeringName: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 20,
+    fontSize: 22,
     color: "#111827",
   },
-  offeringCategory: {
-    marginTop: 2,
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 13,
-    color: "#FC7B54",
-  },
   offeringDescription: {
-    marginTop: 8,
+    marginTop: 6,
     fontFamily: "Montserrat_400Regular",
-    fontSize: 14,
+    fontSize: 13.5,
     color: "#6B7280",
     lineHeight: 20,
   },
+  noPackagesBox: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EEF2F6",
+    borderStyle: "dashed",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  noPackagesText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "#6B7280",
+  },
+  packagesList: {
+    marginTop: 14,
+    gap: 12,
+  },
   packageCard: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
+    backgroundColor: "#FAFAFC",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EEF2F6",
+    padding: 14,
+    overflow: "hidden",
+  },
+  packageImageContainer: {
+    width: "100%",
+    height: 120,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "#E5E7EB",
+    marginBottom: 12,
+  },
+  packageImage: {
+    width: "100%",
+    height: "100%",
   },
   packageHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 10,
   },
   packageName: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 15,
+    fontFamily: "Outfit_700Bold",
+    fontSize: 16,
     color: "#111827",
     flex: 1,
   },
   packagePrice: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 15,
-    color: "#111827",
+    fontSize: 16,
+    color: "#FC7B54",
   },
   packageDescription: {
     marginTop: 6,
     fontFamily: "Montserrat_400Regular",
-    fontSize: 14,
+    fontSize: 13,
     color: "#6B7280",
-    lineHeight: 20,
+    lineHeight: 19,
   },
-  packageMeta: {
-    marginTop: 8,
+  metaRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  reservationBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+  },
+  reservationBadgeRequired: {
+    backgroundColor: "#FFF8EB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  reservationBadgeDirect: {
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  reservationBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+  },
+  reservationBadgeTextRequired: {
+    color: "#B45309",
+  },
+  reservationBadgeTextDirect: {
+    color: "#059669",
+  },
+  featuresContainer: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#EEF2F6",
+  },
+  featuresTitle: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 12,
     color: "#4B5563",
+    marginBottom: 6,
   },
-  featuresWrap: {
-    marginTop: 10,
+  featureItem: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
   },
-  featureTag: {
-    backgroundColor: "#FFF3EE",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  featureCheck: {
+    marginTop: 1,
   },
   featureText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    color: "#FC7B54",
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12.5,
+    color: "#374151",
+    flex: 1,
   },
 });
