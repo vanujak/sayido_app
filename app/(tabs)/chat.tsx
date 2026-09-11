@@ -1,6 +1,7 @@
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { getChatSocket } from "@/lib/chat-socket";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { ChatSkeleton } from "@/components/ui/skeletons";
 import { useGlobalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -807,12 +808,7 @@ export default function ChatScreen() {
 
   const content = useMemo(() => {
     if (loading) {
-      return (
-        <View style={styles.centerState}>
-          <ActivityIndicator size="large" color="#FC7B54" />
-          <Text style={styles.stateText}>Loading chats...</Text>
-        </View>
-      );
+      return <ChatSkeleton />;
     }
 
     if (errorMessage) {

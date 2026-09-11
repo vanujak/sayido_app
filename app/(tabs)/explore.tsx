@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { ExploreSkeleton } from "@/components/ui/skeletons";
 import { useGlobalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   AppState,
-  ActivityIndicator,
   Image,
   LayoutAnimation,
   Platform,
@@ -615,14 +615,7 @@ export default function PackagesScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.screen}>
-        <View style={styles.centerState}>
-          <ActivityIndicator size="large" color="#FC7B54" />
-          <Text style={styles.stateText}>Loading packages...</Text>
-        </View>
-      </View>
-    );
+    return <ExploreSkeleton />;
   }
 
   if (errorMessage) {

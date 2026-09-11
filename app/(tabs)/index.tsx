@@ -6,8 +6,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useGlobalSearchParams, useRouter } from "expo-router";
 import { Bell, DollarSign, Eye, LogOut, Package, Users } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DashboardSkeleton, NotificationListSkeleton } from "@/components/ui/skeletons";
 import {
-  ActivityIndicator,
   Alert,
   Modal,
   Platform,
@@ -976,12 +976,7 @@ export default function Dashboard() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.centerState}>
-        <ActivityIndicator size="large" color="#FC7B54" />
-        <Text style={styles.stateText}>Loading analytics...</Text>
-      </View>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (errorMessage) {
@@ -1147,9 +1142,7 @@ export default function Dashboard() {
             </View>
 
             {notificationsLoading ? (
-              <View style={styles.notificationState}>
-                <ActivityIndicator size="small" color="#FC7B54" />
-              </View>
+              <NotificationListSkeleton />
             ) : notificationPreviews.length ? (
               <ScrollView style={styles.notificationList} showsVerticalScrollIndicator={false}>
                 {notificationPreviews.map((item) => {
@@ -1188,7 +1181,7 @@ export default function Dashboard() {
                               markingReadChatId === item.chatId &&
                                 styles.notificationReadButtonDisabled,
                             ]}
-                            onPress={() => handleMarkAsRead(item.chatId, item.timestamp)}
+                            onPress={() => handleMarkAsRead(item.chatId!, item.timestamp)}
                             activeOpacity={0.85}
                             disabled={markingReadChatId === item.chatId}
                           >
@@ -1200,7 +1193,7 @@ export default function Dashboard() {
                         {!isChat && item.reservationId && (
                           <TouchableOpacity
                             style={styles.notificationReadButton}
-                            onPress={() => handleMarkReservationSeen(item.reservationId)}
+                            onPress={() => handleMarkReservationSeen(item.reservationId!)}
                             activeOpacity={0.85}
                           >
                             <Text style={styles.notificationReadText}>Mark as read</Text>

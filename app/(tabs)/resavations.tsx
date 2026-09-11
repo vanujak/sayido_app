@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ReservationsSkeleton } from "@/components/ui/skeletons";
 import { useGlobalSearchParams } from "expo-router";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -326,14 +326,7 @@ export default function ReservationsScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.screen}>
-        <View style={styles.centerState}>
-          <ActivityIndicator size="large" color="#FC7B54" />
-          <Text style={styles.stateText}>Loading reservations...</Text>
-        </View>
-      </View>
-    );
+    return <ReservationsSkeleton />;
   }
 
   if (errorMessage) {

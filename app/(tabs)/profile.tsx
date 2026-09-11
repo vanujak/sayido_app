@@ -1,10 +1,10 @@
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { clearVendorSession, getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { ProfileSkeleton } from "@/components/ui/skeletons";
 import { useFocusEffect } from "@react-navigation/native";
 import { useGlobalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Image,
   RefreshControl,
   ScrollView,
@@ -227,14 +227,7 @@ export default function ProfileScreen() {
   const hasAvatar = Boolean(vendor.profilePicUrl && !imageError);
 
   if (loading && !profile) {
-    return (
-      <View style={styles.screen}>
-        <View style={styles.centerState}>
-          <ActivityIndicator size="large" color="#FC7B54" />
-          <Text style={styles.stateText}>Loading profile...</Text>
-        </View>
-      </View>
-    );
+    return <ProfileSkeleton />;
   }
 
   return (
