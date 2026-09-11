@@ -5,16 +5,23 @@ import {
   AppState,
   ActivityIndicator,
   Image,
+  LayoutAnimation,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
+  UIManager,
   View,
 } from "react-native";
-import { Check, Package } from "lucide-react-native";
+import { Check, ChevronDown, ChevronUp, Package, Sparkles } from "lucide-react-native";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type Offering = {
   id: string;
@@ -105,11 +112,11 @@ async function graphQlRequest<TData>(
     body: JSON.stringify({ query, variables }),
   });
 
-  let payload: { data?: TData; errors?: Array<{ message?: string }> } = {};
+  let payload: { data?: TData; errors?: { message?: string }[] } = {};
   try {
     payload = (await response.json()) as {
       data?: TData;
-      errors?: Array<{ message?: string }>;
+      errors?: { message?: string }[];
     };
   } catch {
     payload = {};
@@ -212,7 +219,7 @@ const loadOfferingsByVendor = async (vendorId: string): Promise<Offering[]> => {
 const loadOfferingsFromSession = async (vendorEmail: string): Promise<Offering[]> => {
   const queryWithVendor = async () => {
     const data = await graphQlRequest<{
-      findOfferings?: Array<Record<string, unknown>>;
+      findOfferings?: Record<string, unknown>[];
     }>(
       `
         query FindOfferingsForSession {
@@ -318,18 +325,158 @@ function OfferingBannerImage({ uri, alt }: { uri: string; alt: string }) {
   );
 }
 
-function PackageThumbnailImage({ uri, alt }: { uri?: string | null; alt: string }) {
+function PackageThumbnailImage({ uri, alt }: { uri?: string | null; alt?: string }) {
   const [hasError, setHasError] = useState(false);
-  if (hasError || !uri?.trim()) return null;
+
+  if (hasError || !uri?.trim()) {
+    return (
+      <View style={styles.thumbnailPlaceholder}>
+        <Package size={22} color="#FC7B54" />
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.packageImageContainer}>
+    <View style={styles.thumbnailContainer}>
       <Image
         source={{ uri }}
-        style={styles.packageImage}
+        style={styles.thumbnailImage}
         resizeMode="cover"
         onError={() => setHasError(true)}
       />
+    </View>
+  );
+}
+
+function PackageAccordionCard({
+  pkg,
+  isOpen,
+  onToggle,
+}: {
+  pkg: VendorPackage;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <View style={[styles.accordionCard, isOpen && styles.accordionCardOpen]}>
+      <TouchableOpacity
+        style={styles.accordionHeader}
+        onPress={onToggle}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isOpen }}
+      >
+        <PackageThumbnailImage uri={pkg.image} alt={pkg.name} />
+
+        <View style={styles.headerInfo}>
+          <Text style={styles.packageName} numberOfLines={2}>
+            {pkg.name}
+          </Text>
+
+          <Text style={styles.packagePrice}>
+            {pkg.pricing !== null ? formatLkr(pkg.pricing) : "Contact for pricing"}
+          </Text>
+
+          <View style={styles.headerPillsRow}>
+            <View
+              style={[
+                styles.miniBadge,
+                pkg.requiresReservation
+                  ? styles.miniBadgeReservation
+                  : styles.miniBadgeDirect,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.miniBadgeText,
+                  pkg.requiresReservation
+                    ? styles.miniBadgeTextReservation
+                    : styles.miniBadgeTextDirect,
+                ]}
+              >
+                {pkg.requiresReservation ? "Reservation" : "Direct"}
+              </Text>
+            </View>
+
+            {pkg.features.length > 0 && (
+              <View style={styles.featureCountBadge}>
+                <Text style={styles.featureCountText}>
+                  {pkg.features.length} {pkg.features.length === 1 ? "feature" : "features"}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        <View style={[styles.chevronCircle, isOpen && styles.chevronCircleOpen]}>
+          {isOpen ? (
+            <ChevronUp size={18} color="#FC7B54" strokeWidth={2.5} />
+          ) : (
+            <ChevronDown size={18} color="#6B7280" strokeWidth={2.5} />
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {isOpen && (
+        <View style={styles.accordionBody}>
+          {!!pkg.description && (
+            <View style={styles.descriptionSection}>
+              <Text style={styles.packageDescription}>{pkg.description}</Text>
+            </View>
+          )}
+
+          <View style={styles.reservationDetailRow}>
+            <View
+              style={[
+                styles.reservationBadge,
+                pkg.requiresReservation
+                  ? styles.reservationBadgeRequired
+                  : styles.reservationBadgeDirect,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.reservationBadgeText,
+                  pkg.requiresReservation
+                    ? styles.reservationBadgeTextRequired
+                    : styles.reservationBadgeTextDirect,
+                ]}
+              >
+                {pkg.requiresReservation
+                  ? "Requires advance reservation confirmation"
+                  : "Instant / direct booking available"}
+              </Text>
+            </View>
+          </View>
+
+          {pkg.features.length > 0 && (
+            <View style={styles.featuresContainer}>
+              <View style={styles.featuresHeaderRow}>
+                <Sparkles size={13} color="#FC7B54" />
+                <Text style={styles.featuresTitle}>What{"'"}s Included</Text>
+              </View>
+
+              <View style={styles.featuresList}>
+                {pkg.features.map((feature, index) => (
+                  <View
+                    key={`${pkg.id}-${feature}-${index}`}
+                    style={styles.featureItem}
+                  >
+                    <View style={styles.featureCheckCircle}>
+                      <Check
+                        size={11}
+                        color="#059669"
+                        strokeWidth={3}
+                      />
+                    </View>
+                    <Text style={styles.featureText}>{feature}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -347,6 +494,8 @@ export default function PackagesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [expandedOfferingIds, setExpandedOfferingIds] = useState<Record<string, boolean>>({});
+  const [expandedPackageIds, setExpandedPackageIds] = useState<Record<string, boolean>>({});
 
   const vendorId =
     (typeof params.vendor_id === "string" && params.vendor_id) ||
@@ -401,7 +550,7 @@ export default function PackagesScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [vendorEmail, vendorId]);
+  }, [vendorEmail, vendorId, vendorSession.email]);
 
   useEffect(() => {
     loadData();
@@ -424,6 +573,41 @@ export default function PackagesScreen() {
       subscription.remove();
     };
   }, [loadData]);
+
+  const toggleOffering = (offeringId: string) => {
+    if (Platform.OS !== "web") {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    setExpandedOfferingIds((prev) => ({
+      ...prev,
+      [offeringId]: !prev[offeringId],
+    }));
+  };
+
+  const togglePackage = (packageId: string) => {
+    if (Platform.OS !== "web") {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    setExpandedPackageIds((prev) => ({
+      ...prev,
+      [packageId]: !prev[packageId],
+    }));
+  };
+
+  const toggleAllForOffering = (packageList: VendorPackage[]) => {
+    if (Platform.OS !== "web") {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    setExpandedPackageIds((prev) => {
+      const allOpen = packageList.every((p) => prev[p.id]);
+      const nextState = !allOpen;
+      const updated = { ...prev };
+      packageList.forEach((p) => {
+        updated[p.id] = nextState;
+      });
+      return updated;
+    });
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -462,115 +646,130 @@ export default function PackagesScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Packages</Text>
+        <Text style={styles.title}>Services & Packages</Text>
         <Text style={styles.subtitle}>Your offerings and their packages</Text>
 
         {sections.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No packages yet</Text>
+            <Text style={styles.emptyTitle}>No services yet</Text>
             <Text style={styles.emptyText}>
-              Add packages under offerings to show them on this page.
+              Add services and packages to show them on this page.
             </Text>
           </View>
         ) : (
-          sections.map((entry) => (
-            <View key={entry.offering.id} style={styles.offeringCard}>
-              {Boolean(entry.offering.banner) && (
-                <OfferingBannerImage
-                  uri={entry.offering.banner!}
-                  alt={entry.offering.name}
-                />
-              )}
+          sections.map((entry) => {
+            const isOfferingOpen = Boolean(expandedOfferingIds[entry.offering.id]);
+            const packageCount = entry.packages.length;
+            const areAllPackagesExpanded =
+              packageCount > 0 && entry.packages.every((pkg) => expandedPackageIds[pkg.id]);
 
-              <View style={styles.offeringBody}>
-                <View style={styles.categoryBadge}>
-                  <Text style={styles.categoryBadgeText}>
-                    {entry.offering.category.toUpperCase()}
-                  </Text>
-                </View>
+            return (
+              <View
+                key={entry.offering.id}
+                style={[styles.offeringCard, isOfferingOpen && styles.offeringCardOpen]}
+              >
+                {/* Service Header Accordion Button */}
+                <TouchableOpacity
+                  style={styles.offeringHeader}
+                  onPress={() => toggleOffering(entry.offering.id)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: isOfferingOpen }}
+                >
+                  <View style={styles.offeringHeaderMain}>
+                    <View style={styles.offeringBadgesRow}>
+                      <View style={styles.categoryBadge}>
+                        <Text style={styles.categoryBadgeText}>
+                          {entry.offering.category.toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.packageCountBadge}>
+                        <Text style={styles.packageCountBadgeText}>
+                          {packageCount} {packageCount === 1 ? "Package" : "Packages"}
+                        </Text>
+                      </View>
+                    </View>
 
-                <Text style={styles.offeringName}>{entry.offering.name}</Text>
+                    <Text style={styles.offeringName}>{entry.offering.name}</Text>
 
-                {!!entry.offering.description && (
-                  <Text style={styles.offeringDescription}>{entry.offering.description}</Text>
-                )}
-
-                {entry.packages.length === 0 ? (
-                  <View style={styles.noPackagesBox}>
-                    <Package size={20} color="#9CA3AF" />
-                    <Text style={styles.noPackagesText}>
-                      No packages yet for this offering.
-                    </Text>
+                    {Boolean(entry.offering.description) && !isOfferingOpen && (
+                      <Text style={styles.offeringDescriptionCollapsed} numberOfLines={1}>
+                        {entry.offering.description}
+                      </Text>
+                    )}
                   </View>
-                ) : (
-                  <View style={styles.packagesList}>
-                    {entry.packages.map((pkg) => (
-                      <View key={pkg.id} style={styles.packageCard}>
-                        {Boolean(pkg.image) && (
-                          <PackageThumbnailImage uri={pkg.image} alt={pkg.name} />
-                        )}
 
-                        <View style={styles.packageHeader}>
-                          <Text style={styles.packageName}>{pkg.name}</Text>
-                          {pkg.pricing !== null && (
-                            <Text style={styles.packagePrice}>{formatLkr(pkg.pricing)}</Text>
+                  <View
+                    style={[
+                      styles.offeringChevronCircle,
+                      isOfferingOpen && styles.offeringChevronCircleOpen,
+                    ]}
+                  >
+                    {isOfferingOpen ? (
+                      <ChevronUp size={20} color="#FC7B54" strokeWidth={2.5} />
+                    ) : (
+                      <ChevronDown size={20} color="#6B7280" strokeWidth={2.5} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+
+                {/* Expanded Service Content: Packages & Details */}
+                {isOfferingOpen && (
+                  <View style={styles.offeringBody}>
+                    {Boolean(entry.offering.banner) && (
+                      <OfferingBannerImage
+                        uri={entry.offering.banner!}
+                        alt={entry.offering.name}
+                      />
+                    )}
+
+                    {Boolean(entry.offering.description) && (
+                      <Text style={styles.offeringDescription}>
+                        {entry.offering.description}
+                      </Text>
+                    )}
+
+                    {entry.packages.length === 0 ? (
+                      <View style={styles.noPackagesBox}>
+                        <Package size={20} color="#9CA3AF" />
+                        <Text style={styles.noPackagesText}>
+                          No packages yet for this service.
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.packagesSection}>
+                        <View style={styles.packagesSectionHeader}>
+                          <Text style={styles.packagesSectionTitle}>Packages</Text>
+                          {entry.packages.length > 1 && (
+                            <TouchableOpacity
+                              onPress={() => toggleAllForOffering(entry.packages)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.toggleAllText}>
+                                {areAllPackagesExpanded ? "Collapse All" : "Expand All"}
+                              </Text>
+                            </TouchableOpacity>
                           )}
                         </View>
 
-                        {!!pkg.description && (
-                          <Text style={styles.packageDescription}>{pkg.description}</Text>
-                        )}
-
-                        <View style={styles.metaRow}>
-                          <View
-                            style={[
-                              styles.reservationBadge,
-                              pkg.requiresReservation
-                                ? styles.reservationBadgeRequired
-                                : styles.reservationBadgeDirect,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.reservationBadgeText,
-                                pkg.requiresReservation
-                                  ? styles.reservationBadgeTextRequired
-                                  : styles.reservationBadgeTextDirect,
-                              ]}
-                            >
-                              {pkg.requiresReservation ? "Requires reservation" : "Direct booking"}
-                            </Text>
-                          </View>
+                        <View style={styles.packagesList}>
+                          {entry.packages.map((pkg) => (
+                            <PackageAccordionCard
+                              key={pkg.id}
+                              pkg={pkg}
+                              isOpen={Boolean(expandedPackageIds[pkg.id])}
+                              onToggle={() => togglePackage(pkg.id)}
+                            />
+                          ))}
                         </View>
-
-                        {pkg.features.length > 0 && (
-                          <View style={styles.featuresContainer}>
-                            <Text style={styles.featuresTitle}>Features:</Text>
-                            <View style={styles.featuresList}>
-                              {pkg.features.map((feature, index) => (
-                                <View
-                                  key={`${pkg.id}-${feature}-${index}`}
-                                  style={styles.featureItem}
-                                >
-                                  <Check
-                                    size={14}
-                                    color="#10B981"
-                                    strokeWidth={2.5}
-                                    style={styles.featureCheck}
-                                  />
-                                  <Text style={styles.featureText}>{feature}</Text>
-                                </View>
-                              ))}
-                            </View>
-                          </View>
-                        )}
                       </View>
-                    ))}
+                    )}
                   </View>
                 )}
               </View>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -658,20 +857,107 @@ const styles = StyleSheet.create({
   },
   offeringCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#E8EDF5",
-    marginBottom: 16,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: "#D1D5DB",
+    marginBottom: 14,
     overflow: "hidden",
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
     elevation: 2,
+  },
+  offeringCardOpen: {
+    borderColor: "#FC7B54",
+    borderWidth: 1.5,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+  },
+  offeringHeader: {
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  offeringHeaderMain: {
+    flex: 1,
+    marginRight: 12,
+    alignItems: "flex-start",
+  },
+  offeringBadgesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+    alignSelf: "flex-start",
+  },
+  categoryBadge: {
+    backgroundColor: "#FFF3EE",
+    borderWidth: 1,
+    borderColor: "#FFD2C2",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+  },
+  categoryBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+    color: "#FC7B54",
+    letterSpacing: 0.5,
+  },
+  packageCountBadge: {
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+  },
+  packageCountBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+    color: "#4B5563",
+  },
+  offeringName: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 18,
+    color: "#111827",
+    lineHeight: 24,
+    textAlign: "left",
+    alignSelf: "flex-start",
+  },
+  offeringDescriptionCollapsed: {
+    marginTop: 4,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12.5,
+    color: "#6B7280",
+    lineHeight: 18,
+  },
+  offeringChevronCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  offeringChevronCircleOpen: {
+    backgroundColor: "#FFF3EE",
+  },
+  offeringBody: {
+    padding: 16,
+    paddingTop: 0,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
   },
   bannerContainer: {
     width: "100%",
-    height: 160,
+    height: 130,
+    borderRadius: 12,
+    marginTop: 14,
     backgroundColor: "#F3F4F6",
     overflow: "hidden",
   },
@@ -679,34 +965,12 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  offeringBody: {
-    padding: 18,
-  },
-  categoryBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#FFF3EE",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginBottom: 8,
-  },
-  categoryBadgeText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 11,
-    color: "#FC7B54",
-    letterSpacing: 0.6,
-  },
-  offeringName: {
-    fontFamily: "Outfit_700Bold",
-    fontSize: 22,
-    color: "#111827",
-  },
   offeringDescription: {
-    marginTop: 6,
+    marginTop: 10,
     fontFamily: "Montserrat_400Regular",
-    fontSize: 13.5,
-    color: "#6B7280",
-    lineHeight: 20,
+    fontSize: 13,
+    color: "#4B5563",
+    lineHeight: 19,
   },
   noPackagesBox: {
     marginTop: 16,
@@ -725,66 +989,176 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#6B7280",
   },
-  packagesList: {
-    marginTop: 14,
-    gap: 12,
+  packagesSection: {
+    marginTop: 16,
   },
-  packageCard: {
-    backgroundColor: "#FAFAFC",
+  packagesSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  packagesSectionTitle: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 13.5,
+    color: "#374151",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
+  toggleAllText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#FC7B54",
+  },
+  packagesList: {
+    gap: 10,
+  },
+  accordionCard: {
+    backgroundColor: "#FFFFFF",
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#EEF2F6",
-    padding: 14,
+    borderColor: "#EAEFF5",
     overflow: "hidden",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
   },
-  packageImageContainer: {
-    width: "100%",
-    height: 120,
-    borderRadius: 10,
+  accordionCardOpen: {
+    borderColor: "#FDBA74",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  accordionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+  },
+  thumbnailContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
     overflow: "hidden",
-    backgroundColor: "#E5E7EB",
-    marginBottom: 12,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
-  packageImage: {
+  thumbnailImage: {
     width: "100%",
     height: "100%",
   },
-  packageHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
+  thumbnailPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: "#FFF5F0",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerInfo: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+    justifyContent: "center",
   },
   packageName: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 16,
+    fontSize: 15,
     color: "#111827",
-    flex: 1,
+    lineHeight: 20,
   },
   packagePrice: {
+    marginTop: 2,
     fontFamily: "Outfit_700Bold",
-    fontSize: 16,
+    fontSize: 14.5,
     color: "#FC7B54",
   },
-  packageDescription: {
-    marginTop: 6,
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 13,
-    color: "#6B7280",
-    lineHeight: 19,
-  },
-  metaRow: {
-    marginTop: 10,
+  headerPillsRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 5,
+  },
+  miniBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  miniBadgeReservation: {
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  miniBadgeDirect: {
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  miniBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10.5,
+  },
+  miniBadgeTextReservation: {
+    color: "#B45309",
+  },
+  miniBadgeTextDirect: {
+    color: "#059669",
+  },
+  featureCountBadge: {
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  featureCountText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10.5,
+    color: "#6B7280",
+  },
+  chevronCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chevronCircleOpen: {
+    backgroundColor: "#FFF3EE",
+  },
+  accordionBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+    backgroundColor: "#FAFAFC",
+  },
+  descriptionSection: {
+    marginBottom: 10,
+  },
+  packageDescription: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "#4B5563",
+    lineHeight: 19,
+  },
+  reservationDetailRow: {
+    marginBottom: 10,
   },
   reservationBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 3.5,
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 6,
   },
   reservationBadgeRequired: {
-    backgroundColor: "#FFF8EB",
+    backgroundColor: "#FFFBEB",
     borderWidth: 1,
     borderColor: "#FDE68A",
   },
@@ -795,7 +1169,7 @@ const styles = StyleSheet.create({
   },
   reservationBadgeText: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 11,
+    fontSize: 11.5,
   },
   reservationBadgeTextRequired: {
     color: "#B45309",
@@ -804,25 +1178,37 @@ const styles = StyleSheet.create({
     color: "#059669",
   },
   featuresContainer: {
-    marginTop: 12,
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: "#EEF2F6",
   },
+  featuresHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
   featuresTitle: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 12,
-    color: "#4B5563",
-    marginBottom: 6,
+    color: "#374151",
+    letterSpacing: 0.2,
+  },
+  featuresList: {
+    gap: 7,
   },
   featureItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 4,
+    gap: 8,
   },
-  featureCheck: {
-    marginTop: 1,
+  featureCheckCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#D1FAE5",
+    alignItems: "center",
+    justifyContent: "center",
   },
   featureText: {
     fontFamily: "Montserrat_400Regular",
