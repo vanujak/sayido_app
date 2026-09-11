@@ -5,6 +5,7 @@ import { useGlobalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,6 +16,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { ArrowLeft, ChevronRight, Mail, Send } from "lucide-react-native";
 
 type ChatMessage = {
   id?: string;
@@ -36,12 +38,14 @@ type VisitorDetails = {
   visitor_fname?: string;
   partner_fname?: string;
   email?: string;
+  profile_pic_url?: string;
 };
 
 type ChatRow = {
   chatId: string;
   visitorName: string;
   visitorEmail: string;
+  visitorAvatarUrl?: string;
   offeringName: string;
   lastMessage: string;
   lastMessageAt: string;
@@ -71,10 +75,56 @@ const toText = (value: unknown, fallback = "") =>
 const paramToText = (value: string | string[] | undefined) =>
   Array.isArray(value) ? toText(value[0]) : toText(value);
 
-const graphQlRequest = async <TData>(
+const getInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "C";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+};
+
+function ChatAvatar({
+  name,
+  imageUrl,
+  size = 48,
+}: {
+  name: string;
+  imageUrl?: string;
+  size?: number;
+}) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const showImage = Boolean(imageUrl && failedUrl !== imageUrl);
+
+  const containerStyle = [
+    styles.avatar,
+    size !== 48 ? { width: size, height: size, borderRadius: size / 2 } : null,
+  ];
+
+  if (showImage && imageUrl) {
+    return (
+      <View style={containerStyle}>
+        <Image
+          source={{ uri: imageUrl }}
+          style={styles.avatarImage}
+          resizeMode="cover"
+          onError={() => setFailedUrl(imageUrl)}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={containerStyle}>
+      <Text style={[styles.avatarText, size !== 48 ? { fontSize: Math.round(size * 0.35) } : null]}>
+        {getInitials(name)}
+      </Text>
+    </View>
+  );
+}
+
+async function graphQlRequest<TData>(
   query: string,
   variables: Record<string, unknown>,
-): Promise<TData> => {
+): Promise<TData> {
   if (!graphQlUrl) {
     throw new Error("Missing EXPO_PUBLIC_GRAPHQL_URL");
   }
@@ -88,11 +138,11 @@ const graphQlRequest = async <TData>(
     body: JSON.stringify({ query, variables }),
   });
 
-  let payload: { data?: TData; errors?: Array<{ message?: string }> } = {};
+  let payload: { data?: TData; errors?: { message?: string }[] } = {};
   try {
     payload = (await response.json()) as {
       data?: TData;
-      errors?: Array<{ message?: string }>;
+      errors?: { message?: string }[];
     };
   } catch {
     payload = {};
@@ -163,19 +213,19 @@ const loadVendorIdByEmail = async (email: string): Promise<string> => {
 
 const loadVendorChats = async (vendorId: string): Promise<VendorChat[]> => {
   const data = await graphQlRequest<{
-    getVendorChats?: Array<{
+    getVendorChats?: {
       chatId?: string;
       visitorId?: string;
       offeringId?: string;
       updatedAt?: string;
-      messages?: Array<{
+      messages?: {
         id?: string;
         content?: string;
         senderId?: string;
         senderType?: string;
         timestamp?: string;
-      }>;
-    }>;
+      }[];
+    }[];
   }>(
     `
       query GetVendorChats($vendorId: String!) {
@@ -224,13 +274,13 @@ const sendVendorMessage = async (
 ): Promise<ChatMessage[]> => {
   const data = await graphQlRequest<{
     sendQuoteMessage?: {
-      messages?: Array<{
+      messages?: {
         id?: string;
         content?: string;
         senderId?: string;
         senderType?: string;
         timestamp?: string;
-      }>;
+      }[];
     } | null;
   }>(
     `
@@ -294,6 +344,7 @@ const loadVisitorById = async (id: string): Promise<VisitorDetails> => {
           visitor_fname
           partner_fname
           email
+          profile_pic_url
         }
       }
     `,
@@ -320,16 +371,90 @@ const loadOfferingNameById = async (id: string): Promise<string> => {
   return toText(data.findOfferingById?.name, "Offering");
 };
 
+const isSameDay = (d1: string, d2: string) => {
+  if (!d1 || !d2) return false;
+  const date1 = new Date(d1);
+  const date2 = new Date(d2);
+  if (Number.isNaN(date1.getTime()) || Number.isNaN(date2.getTime())) return false;
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+};
+
+const formatMessageTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
+const formatChatDateHeader = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  if (isToday) return "Today";
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday =
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+
+  if (isYesterday) return "Yesterday";
+
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays > 0 && diffDays < 7) {
+    return date.toLocaleDateString(undefined, { weekday: "long" });
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+
 const formatTimeAgo = (value: string) => {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "recently";
+  if (Number.isNaN(date.getTime())) return "";
 
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-  return date.toLocaleDateString();
+  const now = new Date();
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday =
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+
+  if (isYesterday) return "Yesterday";
+
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays > 0 && diffDays < 7) {
+    return date.toLocaleDateString(undefined, { weekday: "short" });
+  }
+
+  return date.toLocaleDateString(undefined, { month: "numeric", day: "numeric", year: "2-digit" });
 };
 
 export default function ChatScreen() {
@@ -351,6 +476,7 @@ export default function ChatScreen() {
   const rowsRef = useRef<ChatRow[]>([]);
   const joinedChatsRef = useRef(new Set<string>());
   const lastUnreadRefreshAtRef = useRef(0);
+  const messagesScrollRef = useRef<ScrollView>(null);
   const fallbackVendorId = toText(
     (globalThis as ExpoGlobals).process?.env?.EXPO_PUBLIC_VENDOR_ID,
   );
@@ -425,6 +551,7 @@ export default function ChatScreen() {
           chatId: chat.chatId,
           visitorName,
           visitorEmail: toText(visitor.email),
+          visitorAvatarUrl: toText(visitor.profile_pic_url),
           offeringName: offeringMap.get(chat.offeringId) || "Offering",
           lastMessage: toText(lastMessage?.content, "No messages yet"),
           lastMessageAt: toText(lastMessage?.timestamp || chat.updatedAt),
@@ -522,13 +649,13 @@ export default function ChatScreen() {
         timestamp?: string;
       };
       chat?: {
-        messages?: Array<{
+        messages?: {
           id?: string;
           content?: string;
           senderId?: string;
           senderType?: string;
           timestamp?: string;
-        }>;
+        }[];
       };
     }) => {
       const chatId = toText(payload.chatId);
@@ -682,7 +809,7 @@ export default function ChatScreen() {
     if (loading) {
       return (
         <View style={styles.centerState}>
-          <ActivityIndicator size="large" color="#0EA5E9" />
+          <ActivityIndicator size="large" color="#FC7B54" />
           <Text style={styles.stateText}>Loading chats...</Text>
         </View>
       );
@@ -715,34 +842,60 @@ export default function ChatScreen() {
           style={styles.chatDetail}
         >
           <Pressable style={styles.backButton} onPress={() => setActiveChatId("")}>
+            <ArrowLeft size={14} color="#FC7B54" />
             <Text style={styles.backButtonText}>Back to chats</Text>
           </Pressable>
           <View style={styles.chatHeader}>
-            <Text style={styles.chatTitle} numberOfLines={1}>
-              {activeChat.visitorName}
-            </Text>
-            <Text style={styles.chatSubtitle} numberOfLines={1}>
-              {activeChat.offeringName}
-            </Text>
+            <ChatAvatar name={activeChat.visitorName} imageUrl={activeChat.visitorAvatarUrl} />
+            <View style={styles.chatHeaderContent}>
+              <Text style={styles.chatTitle} numberOfLines={1}>
+                {activeChat.visitorName}
+              </Text>
+              <View style={styles.offeringBadge}>
+                <Text style={styles.offeringBadgeText} numberOfLines={1}>
+                  {activeChat.offeringName}
+                </Text>
+              </View>
+            </View>
           </View>
-          <ScrollView style={styles.messagesScroll} contentContainerStyle={styles.messagesList}>
+          <ScrollView
+            ref={messagesScrollRef}
+            style={styles.messagesScroll}
+            contentContainerStyle={styles.messagesList}
+            onContentSizeChange={() => messagesScrollRef.current?.scrollToEnd({ animated: false })}
+          >
             {activeChat.messages.length ? (
               activeChat.messages.map((message, index) => {
                 const mine = message.senderType.toLowerCase() === "vendor";
+                const prevMessage = index > 0 ? activeChat.messages[index - 1] : null;
+                const showDateHeader =
+                  index === 0 || !isSameDay(prevMessage?.timestamp || "", message.timestamp);
+                const timeText = formatMessageTime(message.timestamp);
+
                 return (
-                  <View
-                    key={`${message.timestamp || "msg"}-${index}`}
-                    style={[
-                      styles.messageBubble,
-                      mine ? styles.myMessageBubble : styles.otherMessageBubble,
-                    ]}
-                  >
-                    <Text style={mine ? styles.myMessageText : styles.otherMessageText}>
-                      {toText(message.content, "...")}
-                    </Text>
-                    <Text style={mine ? styles.myMessageTime : styles.otherMessageTime}>
-                      {formatTimeAgo(message.timestamp)}
-                    </Text>
+                  <View key={`${message.id || message.timestamp || "msg"}-${index}`}>
+                    {showDateHeader && (
+                      <View style={styles.dateSeparator}>
+                        <Text style={styles.dateSeparatorText}>
+                          {formatChatDateHeader(message.timestamp)}
+                        </Text>
+                      </View>
+                    )}
+                    <View
+                      style={[
+                        styles.messageBubble,
+                        mine ? styles.myMessageBubble : styles.otherMessageBubble,
+                      ]}
+                    >
+                      <Text style={mine ? styles.myMessageText : styles.otherMessageText}>
+                        {toText(message.content, "...")}
+                      </Text>
+                      {!!timeText && (
+                        <Text style={mine ? styles.myMessageTime : styles.otherMessageTime}>
+                          {timeText}
+                        </Text>
+                      )}
+                    </View>
                   </View>
                 );
               })
@@ -767,7 +920,11 @@ export default function ChatScreen() {
               onPress={handleSendReply}
               disabled={!replyText.trim() || sending}
             >
-              <Text style={styles.sendButtonText}>{sending ? "Sending..." : "Send"}</Text>
+              {sending ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Send size={15} color="#FFFFFF" />
+              )}
             </Pressable>
           </View>
           {!!sendError && <Text style={styles.sendErrorText}>{sendError}</Text>}
@@ -777,27 +934,62 @@ export default function ChatScreen() {
 
     return (
       <View style={styles.list}>
-        {rows.map((row) => (
-          <Pressable key={row.chatId} style={styles.card} onPress={() => setActiveChatId(row.chatId)}>
-            <View style={styles.rowHeader}>
-              <Text style={styles.clientName} numberOfLines={1}>
-                {row.visitorName}
-              </Text>
-              <Text style={styles.time}>{formatTimeAgo(row.lastMessageAt)}</Text>
-            </View>
-            <Text style={styles.offering} numberOfLines={1}>
-              {row.offeringName}
-            </Text>
-            {!!row.visitorEmail && (
-              <Text style={styles.email} numberOfLines={1}>
-                {row.visitorEmail}
-              </Text>
-            )}
-            <Text style={styles.message} numberOfLines={2}>
-              {row.lastMessage}
-            </Text>
-          </Pressable>
-        ))}
+        {rows.map((row) => {
+          const lastMsg = row.messages?.[row.messages.length - 1];
+          const isFromVendor = lastMsg?.senderType?.toLowerCase() === "vendor";
+
+          return (
+            <Pressable
+              key={row.chatId}
+              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+              onPress={() => setActiveChatId(row.chatId)}
+            >
+              <ChatAvatar name={row.visitorName} imageUrl={row.visitorAvatarUrl} />
+
+              <View style={styles.cardContent}>
+                <View style={styles.rowHeader}>
+                  <Text style={styles.clientName} numberOfLines={1}>
+                    {row.visitorName}
+                  </Text>
+                  <Text style={styles.time}>{formatTimeAgo(row.lastMessageAt)}</Text>
+                </View>
+
+                <View style={styles.metaRow}>
+                  <View style={styles.offeringBadge}>
+                    <Text style={styles.offeringBadgeText} numberOfLines={1}>
+                      {row.offeringName}
+                    </Text>
+                  </View>
+                  {!!row.visitorEmail && (
+                    <View style={styles.emailContainer}>
+                      <Mail size={11} color="#9CA3AF" />
+                      <Text style={styles.email} numberOfLines={1}>
+                        {row.visitorEmail}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <Text
+                  style={[
+                    styles.messagePreview,
+                    !row.lastMessage && styles.messagePreviewEmpty,
+                  ]}
+                  numberOfLines={2}
+                >
+                  {isFromVendor ? (
+                    <Text style={styles.messagePreviewSender}>You: </Text>
+                  ) : null}
+                  {row.lastMessage || "No messages yet"}
+                </Text>
+              </View>
+
+              <View style={styles.chevronContainer}>
+                <ChevronRight size={18} color="#D1D5DB" />
+              </View>
+            </Pressable>
+          );
+        })}
       </View>
     );
   }, [activeChat, errorMessage, handleSendReply, loading, replyText, rows, sendError, sending]);
@@ -818,10 +1010,17 @@ export default function ChatScreen() {
     <View style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.container}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => {
-          setRefreshing(true);
-          loadData();
-        }} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor="#FC7B54"
+            colors={["#FC7B54"]}
+            onRefresh={() => {
+              setRefreshing(true);
+              void loadData();
+            }}
+          />
+        }
       >
         <Text style={styles.pageTitle}>Vendor Chats</Text>
         <Text style={styles.pageSubtitle}>Messages with couples and clients</Text>
@@ -865,10 +1064,15 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     borderRadius: 999,
-    backgroundColor: "#FFF1E8",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: "#FFF3EE",
+    borderWidth: 1,
+    borderColor: "#FFD2C2",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
   },
   backButtonText: {
     fontFamily: "Montserrat_600SemiBold",
@@ -876,23 +1080,35 @@ const styles = StyleSheet.create({
     color: "#FC7B54",
   },
   chatHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E8EDF5",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#D1D5DB",
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  chatHeaderContent: {
+    flex: 1,
+    gap: 3,
   },
   chatTitle: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 18,
+    fontSize: 17,
     color: "#111827",
   },
   chatSubtitle: {
     marginTop: 4,
-    fontFamily: "Montserrat_400Regular",
+    fontFamily: "Montserrat_600SemiBold",
     fontSize: 12,
-    color: "#6B7280",
+    color: "#FC7B54",
   },
   messagesScroll: {
     flex: 1,
@@ -916,8 +1132,8 @@ const styles = StyleSheet.create({
   otherMessageBubble: {
     alignSelf: "flex-start",
     backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E8EDF5",
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
   },
   myMessageText: {
     fontFamily: "Montserrat_400Regular",
@@ -931,16 +1147,39 @@ const styles = StyleSheet.create({
     color: "#374151",
     lineHeight: 18,
   },
-  myMessageTime: {
-    marginTop: 4,
-    fontFamily: "Montserrat_400Regular",
+  dateSeparator: {
+    alignSelf: "center",
+    marginVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 3.5,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  dateSeparatorText: {
+    fontFamily: "Montserrat_600SemiBold",
     fontSize: 11,
-    color: "#FFE8DE",
+    color: "#6B7280",
+    letterSpacing: 0.2,
+  },
+  myMessageTime: {
+    alignSelf: "flex-end",
+    marginTop: 3,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 10,
+    color: "rgba(255, 255, 255, 0.8)",
   },
   otherMessageTime: {
-    marginTop: 4,
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 11,
+    alignSelf: "flex-end",
+    marginTop: 3,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 10,
     color: "#9CA3AF",
   },
   replyBar: {
@@ -951,11 +1190,11 @@ const styles = StyleSheet.create({
   },
   replyInput: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 44,
     maxHeight: 110,
     backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E8EDF5",
+    borderWidth: 1.5,
+    borderColor: "#D1D5DB",
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -966,8 +1205,10 @@ const styles = StyleSheet.create({
   sendButton: {
     backgroundColor: "#FC7B54",
     borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sendButtonDisabled: {
     opacity: 0.55,
@@ -985,52 +1226,117 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#E8EDF5",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#D1D5DB",
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.05,
-    shadowRadius: 14,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  cardPressed: {
+    borderColor: "#FC7B54",
+    backgroundColor: "#FFF9F6",
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#FFF3EE",
+    borderWidth: 1.5,
+    borderColor: "#FFD2C2",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  avatarText: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 16,
+    color: "#FC7B54",
+  },
+  cardContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
   rowHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: 8,
   },
   clientName: {
     flex: 1,
     fontFamily: "Outfit_700Bold",
-    fontSize: 16,
+    fontSize: 15.5,
     color: "#111827",
   },
   time: {
     fontFamily: "Montserrat_500Medium",
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  offering: {
-    marginTop: 6,
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 13,
-    color: "#0EA5E9",
-  },
-  email: {
-    marginTop: 4,
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 12,
+    fontSize: 11.5,
     color: "#9CA3AF",
   },
-  message: {
-    marginTop: 6,
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 1,
+    marginBottom: 4,
+  },
+  offeringBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#FFF3EE",
+    borderWidth: 1,
+    borderColor: "#FFD2C2",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  offeringBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10.5,
+    color: "#FC7B54",
+    letterSpacing: 0.2,
+  },
+  emailContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3.5,
+    flexShrink: 1,
+  },
+  email: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "#6B7280",
+  },
+  messagePreview: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
-    color: "#6B7280",
     lineHeight: 18,
+    color: "#4B5563",
+  },
+  messagePreviewSender: {
+    fontFamily: "Montserrat_600SemiBold",
+    color: "#1F2937",
+  },
+  messagePreviewEmpty: {
+    color: "#9CA3AF",
+    fontStyle: "italic",
+  },
+  chevronContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingLeft: 2,
   },
   centerState: {
     minHeight: 220,
