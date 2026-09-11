@@ -56,7 +56,7 @@ const parseDate = (value: string) => {
 const monthLabel = (value: Date) =>
   value.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
-const graphQlRequest = async <TData>(
+const graphQlRequest = async <TData extends unknown>(
   query: string,
   variables: Record<string, unknown>
 ): Promise<TData> => {
@@ -354,7 +354,14 @@ export default function ReservationsScreen() {
     <View style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.container}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#FC7B54"
+            colors={["#FC7B54"]}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>Reservations</Text>

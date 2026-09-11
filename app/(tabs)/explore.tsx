@@ -643,7 +643,14 @@ export default function PackagesScreen() {
     <View style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.container}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#FC7B54"
+            colors={["#FC7B54"]}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>Services & Packages</Text>
