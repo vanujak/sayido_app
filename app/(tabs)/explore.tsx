@@ -39,6 +39,7 @@ type VendorPackage = {
   pricing: number | null;
   features: string[];
   requiresReservation: boolean;
+  requiresApproval: boolean;
   visible: boolean;
   image?: string | null;
 };
@@ -275,6 +276,7 @@ const parsePackages = (raw: unknown, offeringId: string): VendorPackage[] => {
         pricing: toPrice(item.pricing),
         features: toFeatures(item.features),
         requiresReservation: Boolean(item.requires_reservation ?? item.requiresReservation),
+        requiresApproval: Boolean(item.requires_approval ?? item.requiresApproval),
         visible: item.visible !== false,
         image: toText(item.image) || null,
       };
@@ -296,6 +298,7 @@ const loadPackagesByOffering = async (offeringId: string): Promise<VendorPackage
           features
           visible
           requiresReservation
+          requiresApproval
           image
           offering {
             id
@@ -348,24 +351,10 @@ function PackageThumbnailImage({ uri, alt }: { uri?: string | null; alt?: string
   );
 }
 
-function PackageAccordionCard({
-  pkg,
-  isOpen,
-  onToggle,
-}: {
-  pkg: VendorPackage;
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
+function PackageCard({ pkg }: { pkg: VendorPackage }) {
   return (
-    <View style={[styles.accordionCard, isOpen && styles.accordionCardOpen]}>
-      <TouchableOpacity
-        style={styles.accordionHeader}
-        onPress={onToggle}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: isOpen }}
-      >
+    <View style={styles.packageCard}>
+      <View style={styles.packageHeader}>
         <PackageThumbnailImage uri={pkg.image} alt={pkg.name} />
 
         <View style={styles.headerInfo}>
@@ -378,25 +367,25 @@ function PackageAccordionCard({
           </Text>
 
           <View style={styles.headerPillsRow}>
-            <View
-              style={[
-                styles.miniBadge,
-                pkg.requiresReservation
-                  ? styles.miniBadgeReservation
-                  : styles.miniBadgeDirect,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.miniBadgeText,
-                  pkg.requiresReservation
-                    ? styles.miniBadgeTextReservation
-                    : styles.miniBadgeTextDirect,
-                ]}
-              >
-                {pkg.requiresReservation ? "Reservation" : "Direct"}
-              </Text>
-            </View>
+            {pkg.requiresApproval ? (
+              <View style={[styles.miniBadge, styles.miniBadgeApproval]}>
+                <Text style={[styles.miniBadgeText, styles.miniBadgeTextApproval]}>
+                  Requires Approval
+                </Text>
+              </View>
+            ) : pkg.requiresReservation ? (
+              <View style={[styles.miniBadge, styles.miniBadgeReservation]}>
+                <Text style={[styles.miniBadgeText, styles.miniBadgeTextReservation]}>
+                  Requires Reservation
+                </Text>
+              </View>
+            ) : (
+              <View style={[styles.miniBadge, styles.miniBadgeNormal]}>
+                <Text style={[styles.miniBadgeText, styles.miniBadgeTextNormal]}>
+                  Normal Package
+                </Text>
+              </View>
+            )}
 
             {pkg.features.length > 0 && (
               <View style={styles.featureCountBadge}>
@@ -407,50 +396,23 @@ function PackageAccordionCard({
             )}
           </View>
         </View>
+      </View>
 
-        <View style={[styles.chevronCircle, isOpen && styles.chevronCircleOpen]}>
-          {isOpen ? (
-            <ChevronUp size={18} color="#FC7B54" strokeWidth={2.5} />
-          ) : (
-            <ChevronDown size={18} color="#6B7280" strokeWidth={2.5} />
-          )}
-        </View>
-      </TouchableOpacity>
-
-      {isOpen && (
-        <View style={styles.accordionBody}>
+      {(Boolean(pkg.description) || pkg.features.length > 0) && (
+        <View style={styles.packageBody}>
           {!!pkg.description && (
             <View style={styles.descriptionSection}>
               <Text style={styles.packageDescription}>{pkg.description}</Text>
             </View>
           )}
 
-          <View style={styles.reservationDetailRow}>
+          {pkg.features.length > 0 && (
             <View
               style={[
-                styles.reservationBadge,
-                pkg.requiresReservation
-                  ? styles.reservationBadgeRequired
-                  : styles.reservationBadgeDirect,
+                styles.featuresContainer,
+                !pkg.description && { borderTopWidth: 0, paddingTop: 0 },
               ]}
             >
-              <Text
-                style={[
-                  styles.reservationBadgeText,
-                  pkg.requiresReservation
-                    ? styles.reservationBadgeTextRequired
-                    : styles.reservationBadgeTextDirect,
-                ]}
-              >
-                {pkg.requiresReservation
-                  ? "Requires advance reservation confirmation"
-                  : "Instant / direct booking available"}
-              </Text>
-            </View>
-          </View>
-
-          {pkg.features.length > 0 && (
-            <View style={styles.featuresContainer}>
               <View style={styles.featuresHeaderRow}>
                 <Sparkles size={13} color="#FC7B54" />
                 <Text style={styles.featuresTitle}>What{"'"}s Included</Text>
@@ -495,7 +457,6 @@ export default function PackagesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [expandedOfferingIds, setExpandedOfferingIds] = useState<Record<string, boolean>>({});
-  const [expandedPackageIds, setExpandedPackageIds] = useState<Record<string, boolean>>({});
 
   const vendorId =
     (typeof params.vendor_id === "string" && params.vendor_id) ||
@@ -584,31 +545,6 @@ export default function PackagesScreen() {
     }));
   };
 
-  const togglePackage = (packageId: string) => {
-    if (Platform.OS !== "web") {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    }
-    setExpandedPackageIds((prev) => ({
-      ...prev,
-      [packageId]: !prev[packageId],
-    }));
-  };
-
-  const toggleAllForOffering = (packageList: VendorPackage[]) => {
-    if (Platform.OS !== "web") {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    }
-    setExpandedPackageIds((prev) => {
-      const allOpen = packageList.every((p) => prev[p.id]);
-      const nextState = !allOpen;
-      const updated = { ...prev };
-      packageList.forEach((p) => {
-        updated[p.id] = nextState;
-      });
-      return updated;
-    });
-  };
-
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
@@ -660,8 +596,6 @@ export default function PackagesScreen() {
           sections.map((entry) => {
             const isOfferingOpen = Boolean(expandedOfferingIds[entry.offering.id]);
             const packageCount = entry.packages.length;
-            const areAllPackagesExpanded =
-              packageCount > 0 && entry.packages.every((pkg) => expandedPackageIds[pkg.id]);
 
             return (
               <View
@@ -740,27 +674,11 @@ export default function PackagesScreen() {
                       <View style={styles.packagesSection}>
                         <View style={styles.packagesSectionHeader}>
                           <Text style={styles.packagesSectionTitle}>Packages</Text>
-                          {entry.packages.length > 1 && (
-                            <TouchableOpacity
-                              onPress={() => toggleAllForOffering(entry.packages)}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={styles.toggleAllText}>
-                                {areAllPackagesExpanded ? "Collapse All" : "Expand All"}
-                              </Text>
-                            </TouchableOpacity>
-                          )}
                         </View>
 
                         <View style={styles.packagesList}>
                           {entry.packages.map((pkg) => (
-                            <PackageAccordionCard
-                              key={pkg.id}
-                              pkg={pkg}
-                              isOpen={Boolean(expandedPackageIds[pkg.id])}
-                              onToggle={() => togglePackage(pkg.id)}
-                            />
+                            <PackageCard key={pkg.id} pkg={pkg} />
                           ))}
                         </View>
                       </View>
@@ -1005,15 +923,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     textTransform: "uppercase",
   },
-  toggleAllText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    color: "#FC7B54",
-  },
   packagesList: {
-    gap: 10,
+    gap: 12,
   },
-  accordionCard: {
+  packageCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 14,
     borderWidth: 1,
@@ -1025,13 +938,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 1,
   },
-  accordionCardOpen: {
-    borderColor: "#FDBA74",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  accordionHeader: {
+  packageHeader: {
     flexDirection: "row",
     alignItems: "center",
     padding: 12,
@@ -1099,6 +1006,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#A7F3D0",
   },
+  miniBadgeNormal: {
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  miniBadgeApproval: {
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
   miniBadgeText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 10.5,
@@ -1108,6 +1025,12 @@ const styles = StyleSheet.create({
   },
   miniBadgeTextDirect: {
     color: "#059669",
+  },
+  miniBadgeTextNormal: {
+    color: "#059669",
+  },
+  miniBadgeTextApproval: {
+    color: "#1D4ED8",
   },
   featureCountBadge: {
     backgroundColor: "#F3F4F6",
@@ -1120,18 +1043,7 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     color: "#6B7280",
   },
-  chevronCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  chevronCircleOpen: {
-    backgroundColor: "#FFF3EE",
-  },
-  accordionBody: {
+  packageBody: {
     paddingHorizontal: 14,
     paddingBottom: 14,
     paddingTop: 10,
@@ -1147,35 +1059,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#4B5563",
     lineHeight: 19,
-  },
-  reservationDetailRow: {
-    marginBottom: 10,
-  },
-  reservationBadge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  reservationBadgeRequired: {
-    backgroundColor: "#FFFBEB",
-    borderWidth: 1,
-    borderColor: "#FDE68A",
-  },
-  reservationBadgeDirect: {
-    backgroundColor: "#ECFDF5",
-    borderWidth: 1,
-    borderColor: "#A7F3D0",
-  },
-  reservationBadgeText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 11.5,
-  },
-  reservationBadgeTextRequired: {
-    color: "#B45309",
-  },
-  reservationBadgeTextDirect: {
-    color: "#059669",
   },
   featuresContainer: {
     paddingTop: 10,

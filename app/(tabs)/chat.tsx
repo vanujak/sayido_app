@@ -1,6 +1,7 @@
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { getChatSocket } from "@/lib/chat-socket";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { formatCoupleName } from "@/lib/formatCoupleName";
 import { ChatSkeleton } from "@/components/ui/skeletons";
 import { useGlobalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -543,9 +544,13 @@ export default function ChatScreen() {
 
       const normalizedRows = chats.map((chat) => {
         const visitor = visitorMap.get(chat.visitorId) || {};
-        const firstName = toText(visitor.visitor_fname);
-        const partnerName = toText(visitor.partner_fname);
-        const visitorName = [firstName, partnerName].filter(Boolean).join(" & ") || "Client";
+        const visitorName = formatCoupleName(
+          {
+            visitor_fname: toText(visitor.visitor_fname),
+            partner_fname: toText(visitor.partner_fname),
+          },
+          "Client"
+        );
         const lastMessage = chat.messages[chat.messages.length - 1];
 
         return {
@@ -959,7 +964,7 @@ export default function ChatScreen() {
                   {!!row.visitorEmail && (
                     <View style={styles.emailContainer}>
                       <Mail size={11} color="#9CA3AF" />
-                      <Text style={styles.email} numberOfLines={1}>
+                      <Text style={styles.email} numberOfLines={1} ellipsizeMode="tail">
                         {row.visitorEmail}
                       </Text>
                     </View>
@@ -971,7 +976,8 @@ export default function ChatScreen() {
                     styles.messagePreview,
                     !row.lastMessage && styles.messagePreviewEmpty,
                   ]}
-                  numberOfLines={2}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
                 >
                   {isFromVendor ? (
                     <Text style={styles.messagePreviewSender}>You: </Text>
@@ -1229,6 +1235,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    minHeight: 104,
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
@@ -1262,7 +1269,8 @@ const styles = StyleSheet.create({
   cardContent: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    justifyContent: "center",
+    gap: 3,
   },
   rowHeader: {
     flexDirection: "row",
@@ -1284,10 +1292,12 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
     gap: 6,
+    height: 22,
     marginTop: 1,
-    marginBottom: 4,
+    marginBottom: 2,
+    overflow: "hidden",
   },
   offeringBadge: {
     alignSelf: "flex-start",
@@ -1297,6 +1307,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 999,
+    maxWidth: "50%",
   },
   offeringBadgeText: {
     fontFamily: "Montserrat_600SemiBold",
@@ -1305,12 +1316,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   emailContainer: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 3.5,
-    flexShrink: 1,
   },
   email: {
+    flex: 1,
     fontFamily: "Montserrat_400Regular",
     fontSize: 11,
     color: "#6B7280",

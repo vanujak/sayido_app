@@ -2,6 +2,7 @@ import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { getChatSocket } from "@/lib/chat-socket";
 import { registerForPushNotificationsAsync } from "@/lib/push-notifications";
 import { clearVendorSession, getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { formatCoupleName } from "@/lib/formatCoupleName";
 import { useFocusEffect } from "@react-navigation/native";
 import { useGlobalSearchParams, useRouter } from "expo-router";
 import { Bell, DollarSign, Eye, LogOut, Package, Users } from "lucide-react-native";
@@ -48,9 +49,10 @@ type VendorPayment = {
 
 type NotificationPreview = {
   id: string;
-  type: "chat" | "reservation";
+  type: "chat" | "reservation" | "approval";
   chatId?: string;
   reservationId?: string;
+  approvalRequestId?: string;
   title: string;
   message: string;
   timestamp: string;
@@ -60,6 +62,7 @@ type NotificationPreview = {
 type NotificationReadState = {
   dismissedPreviewReadAt: Record<string, number>;
   seenReservationIds: Record<string, true>;
+  seenApprovalIds?: Record<string, true>;
 };
 
 const NOTIFICATION_READ_STATE_KEY = "__sayido_notification_read_state__";
@@ -119,13 +122,14 @@ const writeNotificationStateStore = (store: Record<string, NotificationReadState
 
 const getNotificationReadState = (vendorId: string): NotificationReadState => {
   if (!vendorId) {
-    return { dismissedPreviewReadAt: {}, seenReservationIds: {} };
+    return { dismissedPreviewReadAt: {}, seenReservationIds: {}, seenApprovalIds: {} };
   }
 
   const state = readNotificationStateStore()[vendorId];
   return {
     dismissedPreviewReadAt: state?.dismissedPreviewReadAt || {},
     seenReservationIds: state?.seenReservationIds || {},
+    seenApprovalIds: state?.seenApprovalIds || {},
   };
 };
 
@@ -466,6 +470,7 @@ const loadReservationNotificationPreviews = async (
           visitor {
             visitor_fname
             visitor_lname
+            partner_fname
           }
           package {
             name
@@ -481,9 +486,14 @@ const loadReservationNotificationPreviews = async (
     .map((item) => {
       const visitor = (item.visitor as Record<string, unknown> | undefined) || {};
       const pkg = (item.package as Record<string, unknown> | undefined) || {};
-      const firstName = toText(visitor.visitor_fname);
-      const lastName = toText(visitor.visitor_lname);
-      const visitorName = `${firstName} ${lastName}`.trim() || "A customer";
+      const visitorName = formatCoupleName(
+        {
+          visitor_fname: toText(visitor.visitor_fname),
+          visitor_lname: toText(visitor.visitor_lname),
+          partner_fname: toText(visitor.partner_fname),
+        },
+        "A customer"
+      );
       const packageName = toText(pkg.name, "a package");
       const reservationId = toText(item.id);
       const status = toText(item.status, "pending").toUpperCase();
@@ -492,8 +502,8 @@ const loadReservationNotificationPreviews = async (
         id: `reservation-${reservationId}`,
         type: "reservation" as const,
         reservationId,
-        title: "New Reservation",
-        message: `${visitorName} reserved ${packageName} (${status})`,
+        title: "New Booking",
+        message: `${visitorName} booked ${packageName} (${status})`,
         timestamp: toText(item.createdAt),
       };
     })
@@ -503,6 +513,72 @@ const loadReservationNotificationPreviews = async (
       const bDate = new Date(b.timestamp).getTime();
       return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
     });
+};
+
+const loadApprovalNotificationPreviews = async (
+  vendorId: string,
+): Promise<NotificationPreview[]> => {
+  try {
+    const data = await graphQlRequest<{
+      getVendorApprovalRequests?: Array<Record<string, unknown>>;
+    }>(
+      `
+        query VendorApprovalNotifications($vendorId: String!) {
+          getVendorApprovalRequests(vendorId: $vendorId) {
+            id
+            createdAt
+            status
+            bookingDate
+            visitor {
+              visitor_fname
+              visitor_lname
+              partner_fname
+            }
+            package {
+              name
+            }
+          }
+        }
+      `,
+      { vendorId },
+    );
+
+    const rows = Array.isArray(data.getVendorApprovalRequests) ? data.getVendorApprovalRequests : [];
+    return rows
+      .filter((item) => toText(item.status).toLowerCase() === "pending")
+      .map((item) => {
+        const visitor = (item.visitor as Record<string, unknown> | undefined) || {};
+        const pkg = (item.package as Record<string, unknown> | undefined) || {};
+        const visitorName = formatCoupleName(
+          {
+            visitor_fname: toText(visitor.visitor_fname),
+            visitor_lname: toText(visitor.visitor_lname),
+            partner_fname: toText(visitor.partner_fname),
+          },
+          "A couple"
+        );
+        const packageName = toText(pkg.name, "a package");
+        const approvalRequestId = toText(item.id);
+        const bookingDate = toText(item.bookingDate);
+
+        return {
+          id: `approval-${approvalRequestId}`,
+          type: "approval" as const,
+          approvalRequestId,
+          title: "Approval Request",
+          message: `${visitorName} requested booking for ${packageName} on ${bookingDate}`,
+          timestamp: toText(item.createdAt),
+        };
+      })
+      .filter((item) => !!item.approvalRequestId)
+      .sort((a, b) => {
+        const aDate = new Date(a.timestamp).getTime();
+        const bDate = new Date(b.timestamp).getTime();
+        return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+      });
+  } catch {
+    return [];
+  }
 };
 
 const markChatAsRead = async (chatId: string, userId: string): Promise<void> => {
@@ -577,7 +653,9 @@ export default function Dashboard() {
   const [markingReadChatId, setMarkingReadChatId] = useState("");
   const [dismissedPreviewReadAt, setDismissedPreviewReadAt] = useState<Record<string, number>>({});
   const [seenReservationIds, setSeenReservationIds] = useState<Record<string, true>>({});
+  const [seenApprovalIds, setSeenApprovalIds] = useState<Record<string, true>>({});
   const [reservationUnreadCount, setReservationUnreadCount] = useState(0);
+  const [approvalUnreadCount, setApprovalUnreadCount] = useState(0);
   const [vendorProfile, setVendorProfile] = useState<{
     fname?: string;
     lname?: string;
@@ -586,7 +664,7 @@ export default function Dashboard() {
   const isCompactScreen = width < 390;
   const isWideScreen = width >= 860;
   const metricCardWidth = isWideScreen ? "24%" : "48.6%";
-  const totalNotificationCount = unreadCount + reservationUnreadCount;
+  const totalNotificationCount = unreadCount + reservationUnreadCount + approvalUnreadCount;
 
   const vendorId =
     (typeof params.vendor_id === "string" && params.vendor_id) ||
@@ -669,6 +747,7 @@ export default function Dashboard() {
     const readState = getNotificationReadState(notificationStateVendorId);
     setDismissedPreviewReadAt(readState.dismissedPreviewReadAt);
     setSeenReservationIds(readState.seenReservationIds);
+    setSeenApprovalIds(readState.seenApprovalIds || {});
   }, [notificationStateVendorId]);
 
   useEffect(() => {
@@ -833,14 +912,17 @@ export default function Dashboard() {
 
     setNotificationsLoading(true);
     try {
-      const [chatResult, reservationResult, unreadResult] = await Promise.allSettled([
+      const [chatResult, reservationResult, approvalResult, unreadResult] = await Promise.allSettled([
         loadNotificationPreviews(targetVendorId),
         loadReservationNotificationPreviews(targetVendorId),
+        loadApprovalNotificationPreviews(targetVendorId),
         loadUnreadMessageCount(targetVendorId),
       ]);
       const chatPreviews = chatResult.status === "fulfilled" ? chatResult.value : [];
       const reservationPreviews =
         reservationResult.status === "fulfilled" ? reservationResult.value : [];
+      const approvalPreviews =
+        approvalResult.status === "fulfilled" ? approvalResult.value : [];
       const latestUnreadCount = unreadResult.status === "fulfilled" ? toNumber(unreadResult.value) : unreadCount;
 
       const filteredChatPreviews =
@@ -862,9 +944,15 @@ export default function Dashboard() {
         return !!reservationId && !seenReservationIds[reservationId];
       });
 
+      const filteredApprovalPreviews = approvalPreviews.filter((item) => {
+        const approvalRequestId = toText(item.approvalRequestId);
+        return !!approvalRequestId && !seenApprovalIds[approvalRequestId];
+      });
+
       setReservationUnreadCount(filteredReservationPreviews.length);
+      setApprovalUnreadCount(filteredApprovalPreviews.length);
       setNotificationPreviews(
-        [...filteredChatPreviews, ...filteredReservationPreviews].sort((a, b) => {
+        [...filteredChatPreviews, ...filteredReservationPreviews, ...filteredApprovalPreviews].sort((a, b) => {
           const aDate = new Date(a.timestamp).getTime();
           const bDate = new Date(b.timestamp).getTime();
           return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
@@ -873,10 +961,11 @@ export default function Dashboard() {
     } catch {
       setNotificationPreviews([]);
       setReservationUnreadCount(0);
+      setApprovalUnreadCount(0);
     } finally {
       setNotificationsLoading(false);
     }
-  }, [dismissedPreviewReadAt, resolvedVendorId, seenReservationIds, unreadCount, vendorId]);
+  }, [dismissedPreviewReadAt, resolvedVendorId, seenReservationIds, seenApprovalIds, unreadCount, vendorId]);
 
   const handleNotifications = () => {
     setNotificationsOpen(true);
@@ -949,6 +1038,30 @@ export default function Dashboard() {
     setReservationUnreadCount((current) => (current > 0 ? current - 1 : 0));
     setNotificationPreviews((current) =>
       current.filter((item) => !(item.type === "reservation" && item.reservationId === reservationId)),
+    );
+  }, [notificationStateVendorId]);
+
+  const handleMarkApprovalSeen = useCallback((approvalRequestId: string) => {
+    if (!approvalRequestId) return;
+    const targetVendorId = notificationStateVendorId || getVendorSession().vendorId || "";
+    setSeenApprovalIds((current) => ({
+      ...current,
+      [approvalRequestId]: true,
+    }));
+    if (targetVendorId) {
+      const readState = getNotificationReadState(targetVendorId);
+      setNotificationReadState(targetVendorId, {
+        dismissedPreviewReadAt: readState.dismissedPreviewReadAt,
+        seenReservationIds: readState.seenReservationIds,
+        seenApprovalIds: {
+          ...(readState.seenApprovalIds || {}),
+          [approvalRequestId]: true,
+        },
+      });
+    }
+    setApprovalUnreadCount((current) => (current > 0 ? current - 1 : 0));
+    setNotificationPreviews((current) =>
+      current.filter((item) => !(item.type === "approval" && item.approvalRequestId === approvalRequestId)),
     );
   }, [notificationStateVendorId]);
 
@@ -1147,6 +1260,7 @@ export default function Dashboard() {
               <ScrollView style={styles.notificationList} showsVerticalScrollIndicator={false}>
                 {notificationPreviews.map((item) => {
                   const isChat = item.type === "chat";
+                  const isApproval = item.type === "approval";
                   const fromVisitor = toText(item.senderType).toLowerCase() !== "vendor";
                   return (
                     <View key={`${item.id}-${item.timestamp}`} style={styles.notificationItem}>
@@ -1163,6 +1277,12 @@ export default function Dashboard() {
                           onPress={() => {
                             if (item.chatId) {
                               handleOpenChatFromNotification(item.chatId);
+                            } else if (isApproval) {
+                              setNotificationsOpen(false);
+                              router.push({
+                                pathname: "/(tabs)/resavations",
+                                params: { tab: "approvals" },
+                              });
                             } else {
                               setNotificationsOpen(false);
                               router.push("/(tabs)/resavations");
@@ -1171,7 +1291,11 @@ export default function Dashboard() {
                           activeOpacity={0.85}
                         >
                           <Text style={styles.notificationOpenText}>
-                            {isChat ? "Open Chat" : "Open Reservations"}
+                            {isChat
+                              ? "Open Chat"
+                              : isApproval
+                              ? "Review Request"
+                              : "Open Reservations"}
                           </Text>
                         </TouchableOpacity>
                         {isChat && fromVisitor && item.chatId && (
@@ -1190,10 +1314,19 @@ export default function Dashboard() {
                             </Text>
                           </TouchableOpacity>
                         )}
-                        {!isChat && item.reservationId && (
+                        {!isChat && !isApproval && item.reservationId && (
                           <TouchableOpacity
                             style={styles.notificationReadButton}
                             onPress={() => handleMarkReservationSeen(item.reservationId!)}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={styles.notificationReadText}>Mark as read</Text>
+                          </TouchableOpacity>
+                        )}
+                        {isApproval && item.approvalRequestId && (
+                          <TouchableOpacity
+                            style={styles.notificationReadButton}
+                            onPress={() => handleMarkApprovalSeen(item.approvalRequestId!)}
                             activeOpacity={0.85}
                           >
                             <Text style={styles.notificationReadText}>Mark as read</Text>

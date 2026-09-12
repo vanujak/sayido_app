@@ -11,7 +11,10 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
-import { canUseNativePushNotifications } from "@/lib/push-notifications";
+import {
+  canReceiveNotifications,
+  getNotificationsModule,
+} from "@/lib/push-notifications";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -51,21 +54,29 @@ export default function RootLayout() {
   }, [loaded]);
 
   useEffect(() => {
-    if (!canUseNativePushNotifications()) return;
+    if (!canReceiveNotifications()) return;
 
     let subscription: { remove: () => void } | undefined;
     let mounted = true;
 
-    void import("expo-notifications").then((Notifications) => {
-      if (!mounted) return;
+    void getNotificationsModule().then((Notifications) => {
+      if (!mounted || !Notifications) return;
 
       subscription = Notifications.addNotificationResponseReceivedListener((response) => {
         const data = response.notification.request.content.data as {
           type?: string;
           chatId?: string;
+          paymentId?: string;
         };
 
-        if (data?.type === "chat_message" && typeof data.chatId === "string" && data.chatId) {
+        if (data?.type === "package_purchase") {
+          router.push("/(tabs)/resavations");
+        } else if (data?.type === "package_approval_request") {
+          router.push({
+            pathname: "/(tabs)/resavations",
+            params: { tab: "approvals" },
+          });
+        } else if (data?.type === "chat_message" && typeof data.chatId === "string" && data.chatId) {
           router.push({
             pathname: "/(tabs)/chat",
             params: { chatId: data.chatId },
