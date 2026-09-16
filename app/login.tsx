@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
+  Image,
   ImageBackground,
   KeyboardAvoidingView,
   Modal,
@@ -72,11 +73,28 @@ type VendorsLookupResponse = {
     findVendorByEmail?: {
       id?: string;
       email?: string;
+      fname?: string;
+      lname?: string;
+      profile_pic_url?: string;
     } | null;
   };
   errors?: Array<{
     message?: string;
   }>;
+};
+
+const getInitials = (name?: string, fallbackEmail?: string) => {
+  if (name && name.trim()) {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+    }
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  if (fallbackEmail && fallbackEmail.trim()) {
+    return fallbackEmail.charAt(0).toUpperCase();
+  }
+  return "V";
 };
 
 const extractVendorIdFromJwt = (token?: string) => {
@@ -103,13 +121,19 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Returning user state
+  const [savedEmail, setSavedEmail] = useState("");
+  const [savedName, setSavedName] = useState("");
+  const [savedProfilePic, setSavedProfilePic] = useState("");
+  const [isReturningUser, setIsReturningUser] = useState(false);
+  const [biometricsOn, setBiometricsOn] = useState(false);
+
   const [optInVisible, setOptInVisible] = useState(false);
   const [pendingSession, setPendingSession] = useState<{
     email: string;
     vendorId: string;
   } | null>(null);
   const [biometricType, setBiometricType] = useState("Fingerprint");
-  const [canQuickLogin, setCanQuickLogin] = useState(false);
 
   // Prevent smartphone back button from navigating back into protected tabs or invalid sessions
   useFocusEffect(
@@ -123,14 +147,62 @@ export default function LoginScreen() {
     }, [])
   );
 
+  const fetchVendorPreview = async (targetEmail: string) => {
+    if (!graphQlUrl || !targetEmail) return;
+    try {
+      const response = await fetch(graphQlUrl, {
+        method: "POST",
+        credentials: apiCredentials,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: `
+            query FindVendorPreview($email: String!) {
+              findVendorByEmail(email: $email) {
+                id
+                email
+                fname
+                lname
+                profile_pic_url
+              }
+            }
+          `,
+          variables: { email: targetEmail.trim() },
+        }),
+      });
+      const payload = (await response.json()) as VendorsLookupResponse;
+      const v = payload.data?.findVendorByEmail;
+      if (v) {
+        const name = `${v.fname || ""} ${v.lname || ""}`.trim();
+        const pic = v.profile_pic_url || "";
+        if (name) setSavedName(name);
+        if (pic) setSavedProfilePic(pic);
+        setVendorSession({
+          name: name || undefined,
+          profilePicUrl: pic || undefined,
+        });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     const session = getVendorSession();
-    if (session.vendorId && session.email && isBiometricsEnabled()) {
-      setCanQuickLogin(true);
-      void checkBiometricsSupportAsync().then((support) => {
-        setBiometricType(support.typeName);
-      });
+    if (session.email) {
+      setSavedEmail(session.email);
+      setIsReturningUser(true);
+      if (session.name) setSavedName(session.name);
+      if (session.profilePicUrl) setSavedProfilePic(session.profilePicUrl);
+      setBiometricsOn(isBiometricsEnabled());
+
+      if (!session.profilePicUrl || !session.name) {
+        void fetchVendorPreview(session.email);
+      }
     }
+
+    void checkBiometricsSupportAsync().then((support) => {
+      setBiometricType(support.typeName);
+    });
   }, []);
 
   const navigateToTabsWithBiometricsCheck = async (
@@ -199,20 +271,39 @@ export default function LoginScreen() {
   };
 
   const handleBiometricQuickLogin = async () => {
-    const session = getVendorSession();
-    if (!session.vendorId || !session.email) return;
+    const targetEmail = savedEmail || getVendorSession().email;
+    if (!targetEmail) return;
 
+    setErrorMessage("");
     const auth = await authenticateWithBiometricsAsync("Log in to Say I Do");
     if (auth.success) {
+      let targetVendorId = getVendorSession().vendorId;
+      if (!targetVendorId) {
+        targetVendorId = await resolveVendorIdByEmail(targetEmail);
+      }
+      setVendorSession({ email: targetEmail, vendorId: targetVendorId });
       router.replace({
         pathname: "/(tabs)",
         params: {
-          email: session.email,
-          vendor_email: session.email,
-          vendor_id: session.vendorId,
+          email: targetEmail,
+          vendor_email: targetEmail,
+          vendor_id: targetVendorId,
         },
       });
     }
+  };
+
+  const handleSwitchAccount = () => {
+    setIsReturningUser(false);
+    setEmail("");
+    setPassword("");
+    setErrorMessage("");
+  };
+
+  const handleBackToSavedAccount = () => {
+    setIsReturningUser(true);
+    setPassword("");
+    setErrorMessage("");
   };
 
   const [googleRequest, googleResponse, promptGoogleAsync] =
@@ -283,7 +374,7 @@ export default function LoginScreen() {
     }
   };
 
-  const loginVendor = async () => {
+  const loginVendor = async (targetEmail: string, targetPass: string) => {
     const requestUrl = joinUrl(apiBaseUrl, "/auth/loginVendor");
     let response: Response;
 
@@ -294,7 +385,7 @@ export default function LoginScreen() {
           "Content-Type": "application/json",
         },
         credentials: apiCredentials,
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: targetEmail, password: targetPass }),
       });
     } catch (error) {
       const baseMessage =
@@ -335,6 +426,9 @@ export default function LoginScreen() {
               findVendorByEmail(email: $email) {
                 id
                 email
+                fname
+                lname
+                profile_pic_url
               }
             }
           `,
@@ -346,6 +440,16 @@ export default function LoginScreen() {
       if (!response.ok || payload.errors?.length) return "";
 
       const vendor = payload.data?.findVendorByEmail;
+      if (vendor) {
+        const name = `${vendor.fname || ""} ${vendor.lname || ""}`.trim();
+        const pic = vendor.profile_pic_url || "";
+        if (name) setSavedName(name);
+        if (pic) setSavedProfilePic(pic);
+        setVendorSession({
+          name: name || undefined,
+          profilePicUrl: pic || undefined,
+        });
+      }
       return typeof vendor?.id === "string" ? vendor.id : "";
     } catch {
       return "";
@@ -353,17 +457,21 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      setErrorMessage("Please enter email and password.");
+    const activeEmail = isReturningUser ? savedEmail : email.trim();
+    if (!activeEmail) {
+      setErrorMessage("Please enter your email address.");
+      return;
+    }
+    if (!password.trim()) {
+      setErrorMessage("Please enter your password.");
       return;
     }
 
     setErrorMessage("");
     setLoading(true);
     try {
-      clearVendorSession();
-      const loginPayload = await loginVendor();
-      const normalizedEmail = email.trim();
+      const loginPayload = await loginVendor(activeEmail, password);
+      const normalizedEmail = activeEmail.toLowerCase();
       const responseVendorId =
         typeof loginPayload?.vendorId === "string"
           ? loginPayload.vendorId
@@ -414,139 +522,256 @@ export default function LoginScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.contentContainer}>
-              {/* Header / Logo Area */}
-              <View style={styles.header}>
-                <Text style={styles.title}>Say I Do</Text>
-                <Text style={styles.subtitle}>Vendor Portal</Text>
-              </View>
+              {isReturningUser ? (
+                /* RETURNING USER MODE (Profile image + email + empty password field + biometrics button if enabled) */
+                <View style={styles.form}>
+                  <View style={styles.returningHeader}>
+                    <View style={styles.returningAvatarRing}>
+                      {savedProfilePic ? (
+                        <Image
+                          source={{ uri: savedProfilePic }}
+                          style={styles.returningAvatarImage}
+                        />
+                      ) : (
+                        <View style={styles.returningAvatarFallback}>
+                          <Text style={styles.returningAvatarInitials}>
+                            {getInitials(savedName, savedEmail)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
 
-              {/* Form */}
-              <View style={styles.form}>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Email Address</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="name@example.com"
-                    placeholderTextColor="#9CA3AF"
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                  />
-                </View>
+                    <Text style={styles.returningGreeting}>
+                      {savedName ? `Welcome back, ${savedName.split(" ")[0]}!` : "Welcome Back"}
+                    </Text>
 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Password</Text>
-                  <View style={styles.passwordInputContainer}>
-                    <TextInput
-                      style={[styles.input, styles.passwordInput]}
-                      placeholder="••••••••"
-                      placeholderTextColor="#9CA3AF"
-                      value={password}
-                      onChangeText={setPassword}
-                      secureTextEntry={!showPassword}
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword((prev) => !prev)}
-                      style={styles.passwordToggle}
-                      activeOpacity={0.8}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        showPassword ? "Hide password" : "Show password"
-                      }
-                    >
-                      <Ionicons
-                        name={showPassword ? "eye-off-outline" : "eye-outline"}
-                        size={22}
-                        color="#6B7280"
+                    <View style={styles.returningEmailPill}>
+                      <Text style={styles.returningEmailText}>{savedEmail}</Text>
+                    </View>
+                  </View>
+
+                  {/* Empty Password Field */}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Password</Text>
+                    <View style={styles.passwordInputContainer}>
+                      <TextInput
+                        style={[styles.input, styles.passwordInput]}
+                        placeholder="Enter your password"
+                        placeholderTextColor="#9CA3AF"
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry={!showPassword}
                       />
+                      <TouchableOpacity
+                        onPress={() => setShowPassword((prev) => !prev)}
+                        style={styles.passwordToggle}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          showPassword ? "Hide password" : "Show password"
+                        }
+                      >
+                        <Ionicons
+                          name={showPassword ? "eye-off-outline" : "eye-outline"}
+                          size={22}
+                          color="#6B7280"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Forgot Password Link */}
+                  <View style={styles.forgotPasswordContainer}>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => router.push("/forgot-password")}
+                    >
+                      <Text style={styles.forgotPasswordText}>
+                        Forgot password?
+                      </Text>
                     </TouchableOpacity>
                   </View>
-                </View>
 
-                {/* Forgot Password Link */}
-                <View style={styles.forgotPasswordContainer}>
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => router.push("/forgot-password")}
-                  >
-                    <Text style={styles.forgotPasswordText}>
-                      Forgot password?
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={[
-                    styles.loginButton,
-                    loading && styles.loginButtonDisabled,
-                  ]}
-                  onPress={handleLogin}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.loginButtonText}>Log In</Text>
-                  )}
-                </TouchableOpacity>
-
-                {!!errorMessage && (
-                  <Text style={styles.errorText}>{errorMessage}</Text>
-                )}
-
-                {/* OR Divider */}
-                <View style={styles.dividerContainer}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>OR</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                {/* Continue with Google */}
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={[
-                    styles.googleButton,
-                    (googleLoading || !googleRequest) &&
-                      styles.googleButtonDisabled,
-                  ]}
-                  onPress={handleGoogleLogin}
-                  disabled={googleLoading || !googleRequest}
-                >
-                  {googleLoading ? (
-                    <ActivityIndicator color="#111827" />
-                  ) : (
-                    <View style={styles.googleButtonContent}>
-                      <GoogleIcon size={22} />
-                      <Text style={styles.googleButtonText}>
-                        Continue with Google
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-
-                {canQuickLogin && (
+                  {/* Sign In Button */}
                   <TouchableOpacity
                     activeOpacity={0.8}
-                    style={styles.biometricQuickButton}
-                    onPress={handleBiometricQuickLogin}
+                    style={[
+                      styles.loginButton,
+                      loading && styles.loginButtonDisabled,
+                    ]}
+                    onPress={handleLogin}
+                    disabled={loading}
                   >
-                    <Ionicons
-                      name={
-                        biometricType === "Face Recognition"
-                          ? "scan-outline"
-                          : "finger-print-outline"
-                      }
-                      size={22}
-                      color="#FC7B54"
-                    />
-                    <Text style={styles.biometricQuickButtonText}>
-                      Unlock with {biometricType}
+                    {loading ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.loginButtonText}>Sign In</Text>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Biometrics Button: ONLY shown if user enabled biometrics */}
+                  {biometricsOn && (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      style={styles.biometricQuickButton}
+                      onPress={handleBiometricQuickLogin}
+                    >
+                      <Ionicons
+                        name={
+                          biometricType === "Face Recognition"
+                            ? "scan-outline"
+                            : "finger-print-outline"
+                        }
+                        size={24}
+                        color="#FC7B54"
+                      />
+                      <Text style={styles.biometricQuickButtonText}>
+                        Unlock with {biometricType}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {!!errorMessage && (
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                  )}
+
+                  {/* Switch Account */}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.switchAccountButton}
+                    onPress={handleSwitchAccount}
+                  >
+                    <Text style={styles.switchAccountButtonText}>
+                      Not you? Log in with another account
                     </Text>
                   </TouchableOpacity>
-                )}
-              </View>
+                </View>
+              ) : (
+                /* STANDARD FRESH LOGIN FORM */
+                <View style={styles.form}>
+                  {/* Header / Logo Area */}
+                  <View style={styles.header}>
+                    <Text style={styles.title}>Say I Do</Text>
+                    <Text style={styles.subtitle}>Vendor Portal</Text>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Email Address</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="name@example.com"
+                      placeholderTextColor="#9CA3AF"
+                      value={email}
+                      onChangeText={setEmail}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Password</Text>
+                    <View style={styles.passwordInputContainer}>
+                      <TextInput
+                        style={[styles.input, styles.passwordInput]}
+                        placeholder="••••••••"
+                        placeholderTextColor="#9CA3AF"
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry={!showPassword}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setShowPassword((prev) => !prev)}
+                        style={styles.passwordToggle}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          showPassword ? "Hide password" : "Show password"
+                        }
+                      >
+                        <Ionicons
+                          name={showPassword ? "eye-off-outline" : "eye-outline"}
+                          size={22}
+                          color="#6B7280"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Forgot Password Link */}
+                  <View style={styles.forgotPasswordContainer}>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => router.push("/forgot-password")}
+                    >
+                      <Text style={styles.forgotPasswordText}>
+                        Forgot password?
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={[
+                      styles.loginButton,
+                      loading && styles.loginButtonDisabled,
+                    ]}
+                    onPress={handleLogin}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.loginButtonText}>Log In</Text>
+                    )}
+                  </TouchableOpacity>
+
+                  {!!errorMessage && (
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                  )}
+
+                  {/* OR Divider */}
+                  <View style={styles.dividerContainer}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>OR</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+
+                  {/* Continue with Google */}
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={[
+                      styles.googleButton,
+                      (googleLoading || !googleRequest) &&
+                        styles.googleButtonDisabled,
+                    ]}
+                    onPress={handleGoogleLogin}
+                    disabled={googleLoading || !googleRequest}
+                  >
+                    {googleLoading ? (
+                      <ActivityIndicator color="#111827" />
+                    ) : (
+                      <View style={styles.googleButtonContent}>
+                        <GoogleIcon size={22} />
+                        <Text style={styles.googleButtonText}>
+                          Continue with Google
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  {Boolean(savedEmail) && (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      style={styles.switchAccountButton}
+                      onPress={handleBackToSavedAccount}
+                    >
+                      <Text style={styles.switchAccountButtonText}>
+                        Back to saved account ({savedEmail})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -802,6 +1027,79 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#FC7B54",
     marginLeft: 10,
+  },
+  returningHeader: {
+    alignItems: "center",
+    marginBottom: 26,
+    width: "100%",
+  },
+  returningAvatarRing: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+    borderWidth: 2.5,
+    borderColor: "#FC7B54",
+    overflow: "hidden",
+    shadowColor: "#FC7B54",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  returningAvatarImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 45,
+  },
+  returningAvatarFallback: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 45,
+    backgroundColor: "#FFF0EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  returningAvatarInitials: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 32,
+    color: "#FC7B54",
+  },
+  returningGreeting: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 26,
+    lineHeight: 30,
+    color: "#111827",
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  returningEmailPill: {
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  returningEmailText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#4B5563",
+  },
+  switchAccountButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    marginTop: 6,
+  },
+  switchAccountButtonText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#6B7280",
+    textDecorationLine: "underline",
   },
   modalBackdrop: {
     flex: 1,

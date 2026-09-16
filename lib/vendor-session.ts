@@ -9,6 +9,8 @@ import {
 export type VendorSession = {
   vendorId?: string;
   email?: string;
+  name?: string;
+  profilePicUrl?: string;
   biometricsEnabled?: boolean;
   biometricsOptInPrompted?: boolean;
 };
@@ -119,12 +121,26 @@ export const setVendorSession = (next: VendorSession) => {
 
 /**
  * Clears the session from memory, localStorage, and permanent disk file.
+ * If keepProfile is true, retains the email, name, avatar, and biometrics setting for fast returning login.
  */
-export const clearVendorSession = () => {
-  memorySession = {};
-  clearLocalStorage();
-
-  if (SESSION_FILE) {
-    void deleteAsync(SESSION_FILE, { idempotent: true }).catch(() => {});
+export const clearVendorSession = (keepProfile = false) => {
+  if (keepProfile) {
+    memorySession = {
+      email: memorySession.email,
+      name: memorySession.name,
+      profilePicUrl: memorySession.profilePicUrl,
+      biometricsEnabled: memorySession.biometricsEnabled,
+      biometricsOptInPrompted: memorySession.biometricsOptInPrompted,
+    };
+    writeLocalStorage(memorySession);
+    if (SESSION_FILE) {
+      void writeAsStringAsync(SESSION_FILE, JSON.stringify(memorySession)).catch(() => {});
+    }
+  } else {
+    memorySession = {};
+    clearLocalStorage();
+    if (SESSION_FILE) {
+      void deleteAsync(SESSION_FILE, { idempotent: true }).catch(() => {});
+    }
   }
 };

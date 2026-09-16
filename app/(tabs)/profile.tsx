@@ -150,6 +150,8 @@ export default function ProfileScreen() {
           setVendorSession({
             vendorId: v.id,
             email: v.email,
+            name: `${v.fname || ""} ${v.lname || ""}`.trim(),
+            profilePicUrl: v.profile_pic_url || "",
           });
           return;
         }
@@ -205,6 +207,8 @@ export default function ProfileScreen() {
           setVendorSession({
             vendorId: matched.id,
             email: matched.email,
+            name: `${matched.fname || ""} ${matched.lname || ""}`.trim(),
+            profilePicUrl: matched.profile_pic_url || "",
           });
         }
       }
@@ -253,7 +257,7 @@ export default function ProfileScreen() {
   const initials = `${vendor.fname.charAt(0)}${vendor.lname.charAt(0)}`.toUpperCase();
 
   const handleLogout = () => {
-    clearVendorSession();
+    clearVendorSession(true);
     router.replace("/login");
   };
 
