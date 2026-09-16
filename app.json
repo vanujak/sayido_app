@@ -1,31 +1,27 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "Say I Do",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "frontend",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.vanujak.frontend",
+      "googleServicesFile": "./google-services.json"
     },
     "androidStatusBar": {
-      "backgroundColor": "#ffffff",
-      "barStyle": "dark-content"
-    },
-    "androidNavigationBar": {
       "backgroundColor": "#ffffff",
       "barStyle": "dark-content"
     },
@@ -48,11 +44,20 @@
         }
       ],
       "expo-font",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-image",
+      "expo-web-browser",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c2c881da-3117-4317-a49e-7a3a046ecf30"
+      }
     }
   }
 }

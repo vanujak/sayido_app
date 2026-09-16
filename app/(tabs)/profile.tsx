@@ -5,8 +5,7 @@ import {
   sendTestPackagePurchaseNotification,
 } from "@/lib/push-notifications";
 import { ProfileSkeleton } from "@/components/ui/skeletons";
-import { useFocusEffect } from "@react-navigation/native";
-import { useGlobalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Image,

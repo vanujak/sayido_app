@@ -10,9 +10,13 @@ type NotificationsModule = typeof import("expo-notifications");
 
 /**
  * Checks if the platform can display and handle notifications (iOS / Android native).
+ * On Android, remote notifications and expo-notifications were removed from Expo Go in SDK 53+.
+ * A development build (e.g. npx expo run:android) is required for notifications on Android.
  */
 export const canReceiveNotifications = (): boolean => {
-  return Platform.OS !== "web";
+  if (Platform.OS === "web") return false;
+  if (Platform.OS === "android" && isRunningInExpoGo()) return false;
+  return true;
 };
 
 /**
@@ -29,21 +33,26 @@ export const canUseNativePushNotifications = (): boolean => {
 export const getNotificationsModule = async (): Promise<NotificationsModule | null> => {
   if (!canReceiveNotifications()) return null;
 
-  const Notifications = await import("expo-notifications");
-  if (!notificationHandlerConfigured) {
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
-    });
-    notificationHandlerConfigured = true;
-  }
+  try {
+    const Notifications = await import("expo-notifications");
+    if (!notificationHandlerConfigured && typeof Notifications?.setNotificationHandler === "function") {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+      notificationHandlerConfigured = true;
+    }
 
-  return Notifications;
+    return Notifications;
+  } catch (error) {
+    console.warn("[push-notifications] expo-notifications could not be loaded:", error);
+    return null;
+  }
 };
 
 /**
@@ -76,7 +85,10 @@ export const sendTestLocalNotification = async (options?: {
   if (!canReceiveNotifications()) {
     return {
       success: false,
-      message: "Notifications are not supported in the web browser environment.",
+      message:
+        Platform.OS === "android" && isRunningInExpoGo()
+          ? "Push and local notifications on Android require a development build in SDK 53+ (npx expo run:android). They are not supported in Expo Go."
+          : "Notifications are not supported in this environment.",
     };
   }
 
@@ -152,7 +164,10 @@ export const sendTestPackagePurchaseNotification = async (options?: {
   if (!canReceiveNotifications()) {
     return {
       success: false,
-      message: "Notifications are not supported in the web browser environment.",
+      message:
+        Platform.OS === "android" && isRunningInExpoGo()
+          ? "Push and local notifications on Android require a development build in SDK 53+ (npx expo run:android). They are not supported in Expo Go."
+          : "Notifications are not supported in this environment.",
     };
   }
 
@@ -227,7 +242,9 @@ const getProjectId = (): string => {
   const fromExpoConfig = (
     Constants?.expoConfig?.extra as { eas?: { projectId?: string } } | undefined
   )?.eas?.projectId;
-  return fromExpoConfig || "";
+  if (fromExpoConfig) return fromExpoConfig;
+
+  return process.env.EXPO_PUBLIC_PROJECT_ID || "c2c881da-3117-4317-a49e-7a3a046ecf30";
 };
 
 /**

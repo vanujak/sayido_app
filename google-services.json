@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1027330757638",
+    "project_id": "sayidosl",
+    "storage_bucket": "sayidosl.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1027330757638:android:e7a4a9eab9fc9287991f87",
+        "android_client_info": {
+          "package_name": "com.vanujak.frontend"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD5eXAHYlNYu_zZsEAl-qzlllMUI87F-2M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -42,4 +42,16 @@ app-example
 /ios
 /android
 
+# env files
+.env
+.env.*
 *.env
+
+# Firebase & Service Account Keys (SENSITIVE - Never commit)
+google-service-account*.json
+*-firebase-adminsdk-*.json
+*.keystore
+
+# Build outputs
+*.apk
+*.aab

@@ -10,7 +10,7 @@ import {
 import {
   DefaultTheme,
   ThemeProvider,
-} from "@react-navigation/native";
+} from "expo-router/react-navigation";
 import {
   canReceiveNotifications,
   getNotificationsModule,
@@ -60,7 +60,7 @@ export default function RootLayout() {
     let mounted = true;
 
     void getNotificationsModule().then((Notifications) => {
-      if (!mounted || !Notifications) return;
+      if (!mounted || !Notifications || typeof Notifications.addNotificationResponseReceivedListener !== "function") return;
 
       subscription = Notifications.addNotificationResponseReceivedListener((response) => {
         const data = response.notification.request.content.data as {

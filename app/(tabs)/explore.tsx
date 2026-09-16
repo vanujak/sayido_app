@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ExploreSkeleton } from "@/components/ui/skeletons";
-import { useGlobalSearchParams } from "expo-router";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useGlobalSearchParams } from "expo-router";
 import {
   AppState,
   Image,
@@ -19,7 +18,11 @@ import { Check, ChevronDown, ChevronUp, Package, Sparkles } from "lucide-react-n
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental &&
+  !(global as unknown as { nativeFabricUIManager?: unknown }).nativeFabricUIManager
+) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
