@@ -1,4 +1,4 @@
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import {
   BriefcaseBusiness,
   CalendarDays,
@@ -11,8 +11,14 @@ import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
+import { getVendorSession } from "@/lib/vendor-session";
 
 export default function TabLayout() {
+  const session = getVendorSession();
+  if (!session.vendorId && !session.email) {
+    return <Redirect href="/login" />;
+  }
+
   const insets = useSafeAreaInsets();
   // Design system colors
   const activeColor = "#FC7B54"; // Brand Orange

@@ -9,6 +9,7 @@ import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
@@ -103,6 +104,16 @@ export default function LoginScreen() {
       androidClientId:
         process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined,
     });
+
+  useEffect(() => {
+    const onBackPress = () => {
+      BackHandler.exitApp();
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (googleResponse?.type === "success") {

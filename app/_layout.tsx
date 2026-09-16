@@ -15,10 +15,11 @@ import {
   canReceiveNotifications,
   getNotificationsModule,
 } from "@/lib/push-notifications";
+import { initVendorSessionAsync } from "@/lib/vendor-session";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import "react-native-reanimated";
 
@@ -31,7 +32,7 @@ export {
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  anchor: "(tabs)",
+  initialRouteName: "login",
 };
 
 export default function RootLayout() {
@@ -47,11 +48,19 @@ export default function RootLayout() {
     if (error) throw error;
   }, [error]);
 
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+
   useEffect(() => {
-    if (loaded) {
+    void initVendorSessionAsync().finally(() => {
+      setSessionLoaded(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (loaded && sessionLoaded) {
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [loaded, sessionLoaded]);
 
   useEffect(() => {
     if (!canReceiveNotifications()) return;
@@ -91,7 +100,7 @@ export default function RootLayout() {
     };
   }, [router]);
 
-  if (!loaded) {
+  if (!loaded || !sessionLoaded) {
     return null;
   }
 
@@ -99,7 +108,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider value={DefaultTheme}>
         <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-          <Stack>
+          <Stack initialRouteName="login">
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen
               name="forgot-password"

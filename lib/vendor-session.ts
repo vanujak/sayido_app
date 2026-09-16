@@ -1,11 +1,24 @@
-type VendorSession = {
+import {
+  deleteAsync,
+  documentDirectory,
+  getInfoAsync,
+  readAsStringAsync,
+  writeAsStringAsync,
+} from "expo-file-system/legacy";
+
+export type VendorSession = {
   vendorId?: string;
   email?: string;
 };
 
 const SESSION_KEY = "__sayido_vendor_session__";
+const SESSION_FILE = documentDirectory
+  ? `${documentDirectory}sayido_vendor_session.json`
+  : null;
 
-const readStorage = (): VendorSession => {
+let memorySession: VendorSession = {};
+
+const readLocalStorage = (): VendorSession => {
   if (typeof localStorage === "undefined") return {};
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -17,49 +30,99 @@ const readStorage = (): VendorSession => {
   }
 };
 
-const writeStorage = (value: VendorSession) => {
+const writeLocalStorage = (value: VendorSession) => {
   if (typeof localStorage === "undefined") return;
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify(value));
   } catch {
-    // ignore storage errors
+    // ignore
   }
 };
 
-const readMemory = (): VendorSession => {
-  const globalState = globalThis as { [SESSION_KEY]?: VendorSession };
-  return globalState[SESSION_KEY] || {};
-};
-
-const writeMemory = (value: VendorSession) => {
-  const globalState = globalThis as { [SESSION_KEY]?: VendorSession };
-  globalState[SESSION_KEY] = value;
-};
-
-export const getVendorSession = (): VendorSession => {
-  const memory = readMemory();
-  if (memory.vendorId || memory.email) return memory;
-
-  const stored = readStorage();
-  if (stored.vendorId || stored.email) {
-    writeMemory(stored);
-    return stored;
-  }
-  return {};
-};
-
-export const setVendorSession = (next: VendorSession) => {
-  const merged = { ...getVendorSession(), ...next };
-  writeMemory(merged);
-  writeStorage(merged);
-};
-
-export const clearVendorSession = () => {
-  writeMemory({});
+const clearLocalStorage = () => {
   if (typeof localStorage === "undefined") return;
   try {
     localStorage.removeItem(SESSION_KEY);
   } catch {
-    // ignore storage errors
+    // ignore
+  }
+};
+
+/**
+ * Initializes the session from persistent disk storage (file on native mobile, localStorage on web).
+ * Called once at app startup before splash screen is dismissed.
+ */
+export const initVendorSessionAsync = async (): Promise<VendorSession> => {
+  if (memorySession.vendorId || memorySession.email) {
+    return memorySession;
+  }
+
+  // 1. Try web localStorage
+  const webSession = readLocalStorage();
+  if (webSession.vendorId || webSession.email) {
+    memorySession = webSession;
+    return memorySession;
+  }
+
+  // 2. Try native mobile file system
+  if (SESSION_FILE) {
+    try {
+      const info = await getInfoAsync(SESSION_FILE);
+      if (info.exists) {
+        const raw = await readAsStringAsync(SESSION_FILE);
+        if (raw) {
+          const parsed = JSON.parse(raw) as VendorSession;
+          if (parsed && (parsed.vendorId || parsed.email)) {
+            memorySession = parsed;
+            return memorySession;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[vendor-session] Error reading session file:", e);
+    }
+  }
+
+  return memorySession;
+};
+
+/**
+ * Synchronously retrieves the current vendor session from memory.
+ */
+export const getVendorSession = (): VendorSession => {
+  if (memorySession.vendorId || memorySession.email) {
+    return memorySession;
+  }
+  const webSession = readLocalStorage();
+  if (webSession.vendorId || webSession.email) {
+    memorySession = webSession;
+    return memorySession;
+  }
+  return memorySession;
+};
+
+/**
+ * Persists the vendor session to both memory and permanent disk storage.
+ */
+export const setVendorSession = (next: VendorSession) => {
+  memorySession = { ...memorySession, ...next };
+  writeLocalStorage(memorySession);
+
+  if (SESSION_FILE) {
+    void writeAsStringAsync(SESSION_FILE, JSON.stringify(memorySession)).catch(
+      (err) => console.warn("[vendor-session] Failed to save session to disk:", err)
+    );
+  }
+};
+
+/**
+ * Clears the session from memory, localStorage, and permanent disk file.
+ */
+export const clearVendorSession = () => {
+  memorySession = {};
+  clearLocalStorage();
+
+  if (SESSION_FILE) {
+    void deleteAsync(SESSION_FILE, { idempotent: true }).catch(() => {});
   }
 };
