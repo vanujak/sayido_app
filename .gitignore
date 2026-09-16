@@ -49,6 +49,7 @@ app-example
 
 # Firebase & Service Account Keys (SENSITIVE - Never commit)
 google-service-account*.json
+google-services.json
 *-firebase-adminsdk-*.json
 *.keystore
 
