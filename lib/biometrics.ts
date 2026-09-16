@@ -21,10 +21,10 @@ export const checkBiometricsSupportAsync = async (): Promise<BiometricsSupport> 
     const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
 
     let typeName: "Fingerprint" | "Face Recognition" | "Biometrics" = "Biometrics";
-    if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-      typeName = "Face Recognition";
-    } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+    if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
       typeName = "Fingerprint";
+    } else if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+      typeName = "Face Recognition";
     }
 
     return { hasHardware, isEnrolled, typeName };
