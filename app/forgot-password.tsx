@@ -5,10 +5,11 @@ import {
   verifyPasswordResetOtp,
 } from "@/lib/password-reset-api";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
@@ -19,13 +20,35 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const role: UserRole = "vendor";
   // Steps: 1 = Request OTP, 2 = Verify OTP, 3 = Reset Password, 4 = Success
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+
+  // Handle phone hardware back button
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        if (step === 2) {
+          setStep(1);
+          return true;
+        }
+        if (step === 3) {
+          setStep(2);
+          return true;
+        }
+        router.replace("/login");
+        return true;
+      };
+      const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      return () => subscription.remove();
+    }, [step, router])
+  );
 
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -174,7 +197,11 @@ export default function ForgotPasswordScreen() {
           style={styles.container}
         >
           <ScrollView
-            contentContainerStyle={styles.scrollContainer}
+            contentContainerStyle={[
+              styles.scrollContainer,
+              { paddingBottom: Math.max(40, insets.bottom + 24) },
+            ]}
+            keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.contentContainer}>

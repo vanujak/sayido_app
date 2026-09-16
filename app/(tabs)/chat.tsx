@@ -3,10 +3,11 @@ import { getChatSocket } from "@/lib/chat-socket";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { formatCoupleName } from "@/lib/formatCoupleName";
 import { ChatSkeleton } from "@/components/ui/skeletons";
-import { useGlobalSearchParams } from "expo-router";
+import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -460,6 +461,7 @@ const formatTimeAgo = (value: string) => {
 };
 
 export default function ChatScreen() {
+  const router = useRouter();
   const vendorSession = getVendorSession();
   const sessionEmail = vendorSession.email || "";
   const params = useGlobalSearchParams() as ChatSearchParams;
@@ -496,6 +498,29 @@ export default function ChatScreen() {
     sessionEmail ||
     "";
   const paramChatId = paramToText(params.chatId);
+
+  const handleBackToChatList = useCallback(() => {
+    setActiveChatId("");
+    if (paramChatId) {
+      router.setParams({ chatId: "" });
+    }
+  }, [paramChatId, router]);
+
+  // When vendor is inside a chat, phone back button returns to the main chat list
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        if (activeChatId) {
+          handleBackToChatList();
+          return true; // handled: returns to main chat list
+        }
+        return false; // let tab navigation handle it (e.g. goes back to Dashboard)
+      };
+
+      const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      return () => subscription.remove();
+    }, [activeChatId, handleBackToChatList])
+  );
 
   const loadData = useCallback(async () => {
     setErrorMessage("");
@@ -842,7 +867,7 @@ export default function ChatScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.chatDetail}
         >
-          <Pressable style={styles.backButton} onPress={() => setActiveChatId("")}>
+          <Pressable style={styles.backButton} onPress={handleBackToChatList}>
             <ArrowLeft size={14} color="#FC7B54" />
             <Text style={styles.backButtonText}>Back to chats</Text>
           </Pressable>

@@ -12,9 +12,9 @@ import {
 } from "@/lib/biometrics";
 import { Ionicons } from "@expo/vector-icons";
 import * as Google from "expo-auth-session/providers/google";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
@@ -29,6 +29,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -94,6 +95,7 @@ const extractVendorIdFromJwt = (token?: string) => {
 
 export default function LoginScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -108,6 +110,18 @@ export default function LoginScreen() {
   } | null>(null);
   const [biometricType, setBiometricType] = useState("Fingerprint");
   const [canQuickLogin, setCanQuickLogin] = useState(false);
+
+  // Prevent smartphone back button from navigating back into protected tabs or invalid sessions
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        BackHandler.exitApp();
+        return true;
+      };
+      const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      return () => subscription.remove();
+    }, [])
+  );
 
   useEffect(() => {
     const session = getVendorSession();
@@ -392,7 +406,11 @@ export default function LoginScreen() {
           style={styles.container}
         >
           <ScrollView
-            contentContainerStyle={styles.scrollContainer}
+            contentContainerStyle={[
+              styles.scrollContainer,
+              { paddingBottom: Math.max(40, insets.bottom + 24) },
+            ]}
+            keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.contentContainer}>

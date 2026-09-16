@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardSkeleton, NotificationListSkeleton } from "@/components/ui/skeletons";
 import {
   Alert,
+  BackHandler,
   Modal,
   Platform,
   Pressable,
@@ -664,6 +665,22 @@ export default function Dashboard() {
   const isWideScreen = width >= 860;
   const metricCardWidth = isWideScreen ? "24%" : "48.6%";
   const totalNotificationCount = unreadCount + reservationUnreadCount + approvalUnreadCount;
+
+  // Handle phone hardware back button on root dashboard
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        if (notificationsOpen) {
+          setNotificationsOpen(false);
+          return true;
+        }
+        BackHandler.exitApp();
+        return true;
+      };
+      const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      return () => subscription.remove();
+    }, [notificationsOpen])
+  );
 
   const vendorId =
     (typeof params.vendor_id === "string" && params.vendor_id) ||

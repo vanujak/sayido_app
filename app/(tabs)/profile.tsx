@@ -1,10 +1,6 @@
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { clearVendorSession, getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import {
-  sendTestLocalNotification,
-  sendTestPackagePurchaseNotification,
-} from "@/lib/push-notifications";
-import {
   authenticateWithBiometricsAsync,
   checkBiometricsSupportAsync,
   isBiometricsEnabled,
@@ -58,8 +54,6 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [testingNotification, setTestingNotification] = useState(false);
-  const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
 
   const [biometricsOn, setBiometricsOn] = useState(isBiometricsEnabled());
   const [biometricsSupported, setBiometricsSupported] = useState(false);
@@ -85,55 +79,6 @@ export default function ProfileScreen() {
     } else {
       setBiometricsEnabled(false);
       setBiometricsOn(false);
-    }
-  };
-
-  const handleTestNotification = async (delaySeconds = 0) => {
-    try {
-      setTestingNotification(true);
-      setNotificationStatus(
-        delaySeconds > 0
-          ? `Scheduling in ${delaySeconds}s... Lock your device or go to home screen!`
-          : "Triggering test notification..."
-      );
-      const res = await sendTestLocalNotification({
-        title: "New message from Sophie & Mark",
-        body: "Hi! Are you available on June 14th for wedding photography?",
-        chatId: "demo-chat-id",
-        delaySeconds,
-      });
-      setNotificationStatus(res.message);
-    } catch (err) {
-      setNotificationStatus(
-        err instanceof Error ? err.message : "Notification test failed."
-      );
-    } finally {
-      setTestingNotification(false);
-    }
-  };
-
-  const handleTestPurchaseNotification = async (delaySeconds = 0) => {
-    try {
-      setTestingNotification(true);
-      setNotificationStatus(
-        delaySeconds > 0
-          ? `Scheduling purchase notification in ${delaySeconds}s... Lock your device!`
-          : "Triggering purchase notification..."
-      );
-      const res = await sendTestPackagePurchaseNotification({
-        clientName: "Sophie & Mark",
-        packageName: "Gold Wedding Photography",
-        amount: 1200,
-        bookingDate: "Dec 18, 2026",
-        delaySeconds,
-      });
-      setNotificationStatus(res.message);
-    } catch (err) {
-      setNotificationStatus(
-        err instanceof Error ? err.message : "Notification test failed."
-      );
-    } finally {
-      setTestingNotification(false);
     }
   };
 
@@ -391,52 +336,6 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Push Notifications (Method A Test)</Text>
-          <Text style={styles.notificationDesc}>
-            Test notifications on this device. Tapping a package purchase notification opens the Reservations tab; tapping a chat notification opens the Chat tab.
-          </Text>
-
-          <View style={styles.testBtnGroup}>
-            <TouchableOpacity
-              style={[styles.testButton, testingNotification && styles.btnDisabled]}
-              activeOpacity={0.8}
-              disabled={testingNotification}
-              onPress={() => handleTestPurchaseNotification(0)}
-            >
-              <Text style={styles.testButtonText}>
-                {testingNotification ? "Sending..." : "🎉 Test Package Purchase (Instant)"}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.testButtonOutline, testingNotification && styles.btnDisabled]}
-              activeOpacity={0.8}
-              disabled={testingNotification}
-              onPress={() => handleTestPurchaseNotification(5)}
-            >
-              <Text style={styles.testButtonOutlineText}>
-                🎉 Purchase with 5s Delay (Lock/Background)
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.testButtonSecondary, testingNotification && styles.btnDisabled]}
-              activeOpacity={0.8}
-              disabled={testingNotification}
-              onPress={() => handleTestNotification(0)}
-            >
-              <Text style={styles.testButtonSecondaryText}>
-                💬 Test Chat Message Notification
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {notificationStatus ? (
-            <Text style={styles.notificationStatusText}>{notificationStatus}</Text>
-          ) : null}
-        </View>
-
         <TouchableOpacity
           style={styles.logoutButton}
           activeOpacity={0.8}
@@ -609,64 +508,6 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit_700Bold",
     color: "#FFFFFF",
     fontSize: 16,
-  },
-  notificationDesc: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 13,
-    color: "#6B7280",
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  testBtnGroup: {
-    gap: 8,
-  },
-  testButton: {
-    backgroundColor: "#FC7B54",
-    borderRadius: 12,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  testButtonText: {
-    fontFamily: "Outfit_700Bold",
-    color: "#FFFFFF",
-    fontSize: 14,
-  },
-  testButtonOutline: {
-    backgroundColor: "#FFF3EE",
-    borderWidth: 1,
-    borderColor: "#FC7B54",
-    borderRadius: 12,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  testButtonOutlineText: {
-    fontFamily: "Montserrat_600SemiBold",
-    color: "#FC7B54",
-    fontSize: 13,
-  },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  notificationStatusText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    color: "#059669",
-    marginTop: 10,
-    textAlign: "center",
-  },
-  testButtonSecondary: {
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  testButtonSecondaryText: {
-    fontFamily: "Montserrat_600SemiBold",
-    color: "#4B5563",
-    fontSize: 13,
   },
   switchRow: {
     flexDirection: "row",
