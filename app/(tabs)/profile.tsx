@@ -4,6 +4,12 @@ import {
   sendTestLocalNotification,
   sendTestPackagePurchaseNotification,
 } from "@/lib/push-notifications";
+import {
+  authenticateWithBiometricsAsync,
+  checkBiometricsSupportAsync,
+  isBiometricsEnabled,
+  setBiometricsEnabled,
+} from "@/lib/biometrics";
 import { ProfileSkeleton } from "@/components/ui/skeletons";
 import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -12,6 +18,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -53,6 +60,33 @@ export default function ProfileScreen() {
   const [imageError, setImageError] = useState(false);
   const [testingNotification, setTestingNotification] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
+
+  const [biometricsOn, setBiometricsOn] = useState(isBiometricsEnabled());
+  const [biometricsSupported, setBiometricsSupported] = useState(false);
+  const [biometricType, setBiometricType] = useState("Fingerprint");
+
+  useEffect(() => {
+    void checkBiometricsSupportAsync().then((support) => {
+      setBiometricsSupported(support.hasHardware && support.isEnrolled);
+      setBiometricType(support.typeName);
+      setBiometricsOn(isBiometricsEnabled());
+    });
+  }, []);
+
+  const handleToggleBiometrics = async (value: boolean) => {
+    if (value) {
+      const auth = await authenticateWithBiometricsAsync(
+        `Verify ${biometricType.toLowerCase()} to enable`
+      );
+      if (auth.success) {
+        setBiometricsEnabled(true);
+        setBiometricsOn(true);
+      }
+    } else {
+      setBiometricsEnabled(false);
+      setBiometricsOn(false);
+    }
+  };
 
   const handleTestNotification = async (delaySeconds = 0) => {
     try {
@@ -335,6 +369,28 @@ export default function ProfileScreen() {
           />
         </View>
 
+        {biometricsSupported && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Security</Text>
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.switchLabel}>
+                  {biometricType} Login
+                </Text>
+                <Text style={styles.switchDesc}>
+                  Unlock the app using your {biometricType.toLowerCase()} instead of entering your password.
+                </Text>
+              </View>
+              <Switch
+                value={biometricsOn}
+                onValueChange={handleToggleBiometrics}
+                trackColor={{ false: "#E5E7EB", true: "#FED7AA" }}
+                thumbColor={biometricsOn ? "#FC7B54" : "#9CA3AF"}
+              />
+            </View>
+          </View>
+        )}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Push Notifications (Method A Test)</Text>
           <Text style={styles.notificationDesc}>
@@ -611,5 +667,23 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     color: "#4B5563",
     fontSize: 13,
+  },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+  },
+  switchLabel: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 15,
+    color: "#111827",
+    marginBottom: 2,
+  },
+  switchDesc: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "#6B7280",
+    lineHeight: 18,
   },
 });

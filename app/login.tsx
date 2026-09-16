@@ -1,7 +1,15 @@
 import GoogleIcon from "@/components/GoogleIcon";
 import { apiBaseUrl, apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { loginWithGoogleToken } from "@/lib/google-auth-api";
-import { clearVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { clearVendorSession, getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import {
+  authenticateWithBiometricsAsync,
+  checkBiometricsSupportAsync,
+  isBiometricsEnabled,
+  isBiometricsOptInPrompted,
+  setBiometricsEnabled,
+  setBiometricsOptInPrompted,
+} from "@/lib/biometrics";
 import { Ionicons } from "@expo/vector-icons";
 import * as Google from "expo-auth-session/providers/google";
 import { useRouter } from "expo-router";
@@ -12,6 +20,7 @@ import {
   BackHandler,
   ImageBackground,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -92,6 +101,106 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const [optInVisible, setOptInVisible] = useState(false);
+  const [pendingSession, setPendingSession] = useState<{
+    email: string;
+    vendorId: string;
+  } | null>(null);
+  const [biometricType, setBiometricType] = useState("Fingerprint");
+  const [canQuickLogin, setCanQuickLogin] = useState(false);
+
+  useEffect(() => {
+    const session = getVendorSession();
+    if (session.vendorId && session.email && isBiometricsEnabled()) {
+      setCanQuickLogin(true);
+      void checkBiometricsSupportAsync().then((support) => {
+        setBiometricType(support.typeName);
+      });
+    }
+  }, []);
+
+  const navigateToTabsWithBiometricsCheck = async (
+    targetEmail: string,
+    targetVendorId: string
+  ) => {
+    setVendorSession({ email: targetEmail, vendorId: targetVendorId });
+
+    const support = await checkBiometricsSupportAsync();
+    if (
+      support.hasHardware &&
+      support.isEnrolled &&
+      !isBiometricsOptInPrompted()
+    ) {
+      setBiometricType(support.typeName);
+      setPendingSession({ email: targetEmail, vendorId: targetVendorId });
+      setOptInVisible(true);
+      return;
+    }
+
+    router.replace({
+      pathname: "/(tabs)",
+      params: {
+        email: targetEmail,
+        vendor_email: targetEmail,
+        vendor_id: targetVendorId,
+      },
+    });
+  };
+
+  const handleEnableBiometrics = async () => {
+    const auth = await authenticateWithBiometricsAsync(
+      `Verify ${biometricType.toLowerCase()} to enable`
+    );
+    setOptInVisible(false);
+    if (auth.success) {
+      setBiometricsEnabled(true);
+    } else {
+      setBiometricsOptInPrompted(true);
+    }
+    if (pendingSession) {
+      router.replace({
+        pathname: "/(tabs)",
+        params: {
+          email: pendingSession.email,
+          vendor_email: pendingSession.email,
+          vendor_id: pendingSession.vendorId,
+        },
+      });
+    }
+  };
+
+  const handleSkipBiometrics = () => {
+    setOptInVisible(false);
+    setBiometricsOptInPrompted(true);
+    if (pendingSession) {
+      router.replace({
+        pathname: "/(tabs)",
+        params: {
+          email: pendingSession.email,
+          vendor_email: pendingSession.email,
+          vendor_id: pendingSession.vendorId,
+        },
+      });
+    }
+  };
+
+  const handleBiometricQuickLogin = async () => {
+    const session = getVendorSession();
+    if (!session.vendorId || !session.email) return;
+
+    const auth = await authenticateWithBiometricsAsync("Log in to Say I Do");
+    if (auth.success) {
+      router.replace({
+        pathname: "/(tabs)",
+        params: {
+          email: session.email,
+          vendor_email: session.email,
+          vendor_id: session.vendorId,
+        },
+      });
+    }
+  };
+
   const [googleRequest, googleResponse, promptGoogleAsync] =
     Google.useIdTokenAuthRequest({
       clientId:
@@ -138,14 +247,7 @@ export default function LoginScreen() {
     setErrorMessage("");
     try {
       const result = await loginWithGoogleToken(idToken, "vendor");
-      router.replace({
-        pathname: "/(tabs)",
-        params: {
-          email: result.email,
-          vendor_email: result.email,
-          vendor_id: result.vendorId,
-        },
-      });
+      await navigateToTabsWithBiometricsCheck(result.email, result.vendorId);
     } catch (error) {
       console.error("Google Auth Error:", error);
       setErrorMessage(
@@ -264,15 +366,7 @@ export default function LoginScreen() {
         throw new Error("Unable to resolve vendor account id after login.");
       }
 
-      setVendorSession({ email: normalizedEmail, vendorId: resolvedVendorId });
-      router.replace({
-        pathname: "/(tabs)",
-        params: {
-          email: normalizedEmail,
-          vendor_email: normalizedEmail,
-          vendor_id: resolvedVendorId,
-        },
-      });
+      await navigateToTabsWithBiometricsCheck(normalizedEmail, resolvedVendorId);
     } catch (error) {
       console.error("Login Error:", error);
       setErrorMessage(
@@ -413,11 +507,78 @@ export default function LoginScreen() {
                     </View>
                   )}
                 </TouchableOpacity>
+
+                {canQuickLogin && (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={styles.biometricQuickButton}
+                    onPress={handleBiometricQuickLogin}
+                  >
+                    <Ionicons
+                      name={
+                        biometricType === "Face Recognition"
+                          ? "scan-outline"
+                          : "finger-print-outline"
+                      }
+                      size={22}
+                      color="#FC7B54"
+                    />
+                    <Text style={styles.biometricQuickButtonText}>
+                      Unlock with {biometricType}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
+
+      {/* Biometrics Opt-in Modal */}
+      <Modal
+        visible={optInVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleSkipBiometrics}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIconRing}>
+              <Ionicons
+                name={
+                  biometricType === "Face Recognition"
+                    ? "scan-outline"
+                    : "finger-print-outline"
+                }
+                size={38}
+                color="#FC7B54"
+              />
+            </View>
+            <Text style={styles.modalTitle}>Enable {biometricType} Login?</Text>
+            <Text style={styles.modalDesc}>
+              Fast and secure. Use your {biometricType.toLowerCase()} to unlock Say I Do next time without typing your password.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.modalBtnPrimary}
+              activeOpacity={0.8}
+              onPress={handleEnableBiometrics}
+            >
+              <Text style={styles.modalBtnPrimaryText}>
+                Enable {biometricType}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalBtnSecondary}
+              activeOpacity={0.7}
+              onPress={handleSkipBiometrics}
+            >
+              <Text style={styles.modalBtnSecondaryText}>Maybe Later</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ImageBackground>
   );
 }
@@ -605,5 +766,92 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 12,
     marginBottom: 4,
+  },
+  biometricQuickButton: {
+    width: "100%",
+    height: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF3EE",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#FFD7CA",
+    marginTop: 14,
+  },
+  biometricQuickButtonText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 16,
+    color: "#FC7B54",
+    marginLeft: 10,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 28,
+    padding: 24,
+    alignItems: "center",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  modalIconRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#FFF3EE",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 22,
+    color: "#111827",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  modalDesc: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  modalBtnPrimary: {
+    width: "100%",
+    height: 52,
+    backgroundColor: "#FC7B54",
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  modalBtnPrimaryText: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 16,
+    color: "#FFFFFF",
+  },
+  modalBtnSecondary: {
+    width: "100%",
+    height: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalBtnSecondaryText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 15,
+    color: "#9CA3AF",
   },
 });

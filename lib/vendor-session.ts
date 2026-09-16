@@ -9,6 +9,8 @@ import {
 export type VendorSession = {
   vendorId?: string;
   email?: string;
+  biometricsEnabled?: boolean;
+  biometricsOptInPrompted?: boolean;
 };
 
 const SESSION_KEY = "__sayido_vendor_session__";

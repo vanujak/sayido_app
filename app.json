@@ -47,7 +47,8 @@
       "expo-notifications",
       "expo-image",
       "expo-web-browser",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-local-authentication"
     ],
     "experiments": {
       "typedRoutes": true,
