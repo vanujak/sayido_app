@@ -125,6 +125,7 @@ export default function LoginScreen() {
   const [savedEmail, setSavedEmail] = useState("");
   const [savedName, setSavedName] = useState("");
   const [savedProfilePic, setSavedProfilePic] = useState("");
+  const [authProvider, setAuthProvider] = useState<"google" | "password">("password");
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [biometricsOn, setBiometricsOn] = useState(false);
 
@@ -193,6 +194,7 @@ export default function LoginScreen() {
       setIsReturningUser(true);
       if (session.name) setSavedName(session.name);
       if (session.profilePicUrl) setSavedProfilePic(session.profilePicUrl);
+      if (session.authProvider) setAuthProvider(session.authProvider);
       setBiometricsOn(isBiometricsEnabled());
 
       if (!session.profilePicUrl || !session.name) {
@@ -207,9 +209,14 @@ export default function LoginScreen() {
 
   const navigateToTabsWithBiometricsCheck = async (
     targetEmail: string,
-    targetVendorId: string
+    targetVendorId: string,
+    provider: "google" | "password" = "password"
   ) => {
-    setVendorSession({ email: targetEmail, vendorId: targetVendorId });
+    setVendorSession({
+      email: targetEmail,
+      vendorId: targetVendorId,
+      authProvider: provider,
+    });
 
     const support = await checkBiometricsSupportAsync();
     if (
@@ -281,7 +288,11 @@ export default function LoginScreen() {
       if (!targetVendorId) {
         targetVendorId = await resolveVendorIdByEmail(targetEmail);
       }
-      setVendorSession({ email: targetEmail, vendorId: targetVendorId });
+      setVendorSession({
+        email: targetEmail,
+        vendorId: targetVendorId,
+        authProvider,
+      });
       router.replace({
         pathname: "/(tabs)",
         params: {
@@ -352,7 +363,8 @@ export default function LoginScreen() {
     setErrorMessage("");
     try {
       const result = await loginWithGoogleToken(idToken, "vendor");
-      await navigateToTabsWithBiometricsCheck(result.email, result.vendorId);
+      setAuthProvider("google");
+      await navigateToTabsWithBiometricsCheck(result.email, result.vendorId, "google");
     } catch (error) {
       console.error("Google Auth Error:", error);
       setErrorMessage(
@@ -488,7 +500,12 @@ export default function LoginScreen() {
         throw new Error("Unable to resolve vendor account id after login.");
       }
 
-      await navigateToTabsWithBiometricsCheck(normalizedEmail, resolvedVendorId);
+      setAuthProvider("password");
+      await navigateToTabsWithBiometricsCheck(
+        normalizedEmail,
+        resolvedVendorId,
+        "password",
+      );
     } catch (error) {
       console.error("Login Error:", error);
       setErrorMessage(
@@ -550,85 +567,144 @@ export default function LoginScreen() {
                     </View>
                   </View>
 
-                  {/* Empty Password Field */}
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Password</Text>
-                    <View style={styles.passwordInputContainer}>
-                      <TextInput
-                        style={[styles.input, styles.passwordInput]}
-                        placeholder="Enter your password"
-                        placeholderTextColor="#9CA3AF"
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry={!showPassword}
-                      />
+                  {authProvider === "google" ? (
+                    <>
+                      {/* Biometrics Button: ONLY shown if user enabled biometrics */}
+                      {biometricsOn && (
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          style={styles.biometricQuickButton}
+                          onPress={handleBiometricQuickLogin}
+                        >
+                          <Ionicons
+                            name={
+                              biometricType === "Face Recognition"
+                                ? "scan-outline"
+                                : "finger-print-outline"
+                            }
+                            size={24}
+                            color="#FC7B54"
+                          />
+                          <Text style={styles.biometricQuickButtonText}>
+                            Unlock with {biometricType}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {biometricsOn && (
+                        <View style={styles.dividerContainer}>
+                          <View style={styles.dividerLine} />
+                          <Text style={styles.dividerText}>OR</Text>
+                          <View style={styles.dividerLine} />
+                        </View>
+                      )}
+
+                      {/* 1-Tap Continue with Google Button */}
                       <TouchableOpacity
-                        onPress={() => setShowPassword((prev) => !prev)}
-                        style={styles.passwordToggle}
                         activeOpacity={0.8}
-                        accessibilityRole="button"
-                        accessibilityLabel={
-                          showPassword ? "Hide password" : "Show password"
-                        }
+                        style={[
+                          styles.googleButton,
+                          (googleLoading || !googleRequest) &&
+                            styles.googleButtonDisabled,
+                        ]}
+                        onPress={handleGoogleLogin}
+                        disabled={googleLoading || !googleRequest}
                       >
-                        <Ionicons
-                          name={showPassword ? "eye-off-outline" : "eye-outline"}
-                          size={22}
-                          color="#6B7280"
-                        />
+                        {googleLoading ? (
+                          <ActivityIndicator color="#111827" />
+                        ) : (
+                          <View style={styles.googleButtonContent}>
+                            <GoogleIcon size={22} />
+                            <Text style={styles.googleButtonText}>
+                              Continue with Google
+                            </Text>
+                          </View>
+                        )}
                       </TouchableOpacity>
-                    </View>
-                  </View>
+                    </>
+                  ) : (
+                    <>
+                      {/* Empty Password Field */}
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Password</Text>
+                        <View style={styles.passwordInputContainer}>
+                          <TextInput
+                            style={[styles.input, styles.passwordInput]}
+                            placeholder="Enter your password"
+                            placeholderTextColor="#9CA3AF"
+                            value={password}
+                            onChangeText={setPassword}
+                            secureTextEntry={!showPassword}
+                          />
+                          <TouchableOpacity
+                            onPress={() => setShowPassword((prev) => !prev)}
+                            style={styles.passwordToggle}
+                            activeOpacity={0.8}
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                              showPassword ? "Hide password" : "Show password"
+                            }
+                          >
+                            <Ionicons
+                              name={showPassword ? "eye-off-outline" : "eye-outline"}
+                              size={22}
+                              color="#6B7280"
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
 
-                  {/* Forgot Password Link */}
-                  <View style={styles.forgotPasswordContainer}>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => router.push("/forgot-password")}
-                    >
-                      <Text style={styles.forgotPasswordText}>
-                        Forgot password?
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                      {/* Forgot Password Link */}
+                      <View style={styles.forgotPasswordContainer}>
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => router.push("/forgot-password")}
+                        >
+                          <Text style={styles.forgotPasswordText}>
+                            Forgot password?
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
 
-                  {/* Sign In Button */}
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[
-                      styles.loginButton,
-                      loading && styles.loginButtonDisabled,
-                    ]}
-                    onPress={handleLogin}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.loginButtonText}>Sign In</Text>
-                    )}
-                  </TouchableOpacity>
+                      {/* Sign In Button */}
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        style={[
+                          styles.loginButton,
+                          loading && styles.loginButtonDisabled,
+                        ]}
+                        onPress={handleLogin}
+                        disabled={loading}
+                      >
+                        {loading ? (
+                          <ActivityIndicator color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.loginButtonText}>Sign In</Text>
+                        )}
+                      </TouchableOpacity>
 
-                  {/* Biometrics Button: ONLY shown if user enabled biometrics */}
-                  {biometricsOn && (
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      style={styles.biometricQuickButton}
-                      onPress={handleBiometricQuickLogin}
-                    >
-                      <Ionicons
-                        name={
-                          biometricType === "Face Recognition"
-                            ? "scan-outline"
-                            : "finger-print-outline"
-                        }
-                        size={24}
-                        color="#FC7B54"
-                      />
-                      <Text style={styles.biometricQuickButtonText}>
-                        Unlock with {biometricType}
-                      </Text>
-                    </TouchableOpacity>
+                      {/* Biometrics Button: ONLY shown if user enabled biometrics */}
+                      {biometricsOn && (
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          style={styles.biometricQuickButton}
+                          onPress={handleBiometricQuickLogin}
+                        >
+                          <Ionicons
+                            name={
+                              biometricType === "Face Recognition"
+                                ? "scan-outline"
+                                : "finger-print-outline"
+                            }
+                            size={24}
+                            color="#FC7B54"
+                          />
+                          <Text style={styles.biometricQuickButtonText}>
+                            Unlock with {biometricType}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
                   )}
 
                   {!!errorMessage && (

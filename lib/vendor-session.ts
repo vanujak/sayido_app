@@ -11,6 +11,7 @@ export type VendorSession = {
   email?: string;
   name?: string;
   profilePicUrl?: string;
+  authProvider?: "google" | "password";
   biometricsEnabled?: boolean;
   biometricsOptInPrompted?: boolean;
 };
@@ -129,6 +130,7 @@ export const clearVendorSession = (keepProfile = false) => {
       email: memorySession.email,
       name: memorySession.name,
       profilePicUrl: memorySession.profilePicUrl,
+      authProvider: memorySession.authProvider,
       biometricsEnabled: memorySession.biometricsEnabled,
       biometricsOptInPrompted: memorySession.biometricsOptInPrompted,
     };
