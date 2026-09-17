@@ -11,6 +11,7 @@ import {
   setBiometricsOptInPrompted,
 } from "@/lib/biometrics";
 import { Ionicons } from "@expo/vector-icons";
+import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import * as Google from "expo-auth-session/providers/google";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -319,16 +320,20 @@ export default function LoginScreen() {
 
   const [googleRequest, googleResponse, promptGoogleAsync] =
     Google.useIdTokenAuthRequest({
-      clientId:
-        process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
-        "1054418062583-nja3fs3u9q072hh7avht54habq534luu.apps.googleusercontent.com",
-      webClientId:
-        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-        "1054418062583-nja3fs3u9q072hh7avht54habq534luu.apps.googleusercontent.com",
+      clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || undefined,
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || undefined,
       iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined,
-      androidClientId:
-        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined,
+      androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined,
     });
+
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      GoogleSignin.configure({
+        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || undefined,
+        offlineAccess: true,
+      });
+    }
+  }, []);
 
   useEffect(() => {
     const onBackPress = () => {
@@ -348,8 +353,6 @@ export default function LoginScreen() {
 
       if (idToken) {
         void handleGoogleBackendLogin(idToken);
-      } else {
-        setErrorMessage("No ID token received from Google.");
       }
     } else if (googleResponse?.type === "error") {
       setErrorMessage(
@@ -379,10 +382,43 @@ export default function LoginScreen() {
 
   const handleGoogleLogin = async () => {
     setErrorMessage("");
+    setGoogleLoading(true);
     try {
-      await promptGoogleAsync();
-    } catch {
-      setErrorMessage("Could not launch Google Sign-In.");
+      if (Platform.OS === "web") {
+        await promptGoogleAsync();
+        return;
+      }
+
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      if ((response as any)?.type === "cancelled") {
+        return;
+      }
+
+      const idToken =
+        (response as any)?.data?.idToken ||
+        (response as any)?.idToken;
+
+      if (idToken) {
+        await handleGoogleBackendLogin(idToken);
+      }
+    } catch (error: any) {
+      if (
+        error?.code === statusCodes.SIGN_IN_CANCELLED ||
+        error?.code === "12501" ||
+        String(error?.message || "").toLowerCase().includes("cancel")
+      ) {
+        // User cancelled or touched outside the popup - silently ignore without showing error
+      } else if (error?.code === statusCodes.IN_PROGRESS) {
+        // Sign-in already in progress
+      } else if (error?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        setErrorMessage("Google Play Services is not available or needs to be updated.");
+      } else {
+        console.error("Native Google Sign-In Error:", error);
+        setErrorMessage(error?.message || "Could not complete Google Sign-In.");
+      }
+    } finally {
+      setGoogleLoading(false);
     }
   };
 

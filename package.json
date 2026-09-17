@@ -15,6 +15,7 @@
     "@expo-google-fonts/montserrat": "^0.4.2",
     "@expo-google-fonts/outfit": "^0.4.3",
     "@expo/vector-icons": "^15.0.3",
+    "@react-native-google-signin/google-signin": "^16.1.5",
     "expo": "^57.0.9",
     "expo-auth-session": "~57.0.12",
     "expo-constants": "~57.0.18",

@@ -48,7 +48,8 @@
       "expo-image",
       "expo-web-browser",
       "expo-status-bar",
-      "expo-local-authentication"
+      "expo-local-authentication",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true,
