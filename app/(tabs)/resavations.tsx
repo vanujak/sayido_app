@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ReservationsSkeleton } from "@/components/ui/skeletons";
 import { useGlobalSearchParams } from "expo-router";
+import { useAppTheme } from "@/context/ThemeContext";
 import {
   ActivityIndicator,
   Alert,
@@ -384,6 +385,7 @@ const buildMonthCells = (month: Date, reservationsByDate: ReservationMap) => {
 };
 
 export default function ReservationsScreen() {
+  const { colors, isDark } = useAppTheme();
   const vendorSession = getVendorSession();
   const params = useGlobalSearchParams<{
     id?: string;
@@ -551,10 +553,10 @@ export default function ReservationsScreen() {
 
   if (errorMessage) {
     return (
-      <View style={styles.screen}>
-        <View style={styles.centerState}>
-          <Text style={styles.errorTitle}>Could not load reservations</Text>
-          <Text style={styles.errorText}>{errorMessage}</Text>
+      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+        <View style={[styles.centerState, { backgroundColor: colors.background }]}>
+          <Text style={[styles.errorTitle, { color: colors.text }]}>Could not load reservations</Text>
+          <Text style={[styles.errorText, { color: colors.textSecondary }]}>{errorMessage}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={loadData} activeOpacity={0.8}>
             <Text style={styles.retryText}>Try Again</Text>
           </TouchableOpacity>
@@ -564,42 +566,50 @@ export default function ReservationsScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Bookings</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, { color: colors.text }]}>Bookings</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           {activeTab === "calendar"
             ? "Calendar & upcoming booked packages for your wedding services"
             : "Review package booking approval requests from couples"}
         </Text>
 
-        <View style={styles.segmentContainer}>
+        <View style={[styles.segmentContainer, { backgroundColor: isDark ? colors.cardSubtle : "#E5E7EB" }]}>
           <TouchableOpacity
-            style={[styles.segmentBtn, activeTab === "calendar" && styles.segmentBtnActive]}
+            style={[
+              styles.segmentBtn,
+              activeTab === "calendar" && [styles.segmentBtnActive, { backgroundColor: isDark ? colors.card : "#FFFFFF" }],
+            ]}
             onPress={() => setActiveTab("calendar")}
             activeOpacity={0.8}
           >
             <Text
               style={[
                 styles.segmentBtnText,
-                activeTab === "calendar" && styles.segmentBtnTextActive,
+                { color: colors.textSecondary },
+                activeTab === "calendar" && [styles.segmentBtnTextActive, { color: colors.text }],
               ]}
             >
               Calendar & Bookings
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.segmentBtn, activeTab === "approvals" && styles.segmentBtnActive]}
+            style={[
+              styles.segmentBtn,
+              activeTab === "approvals" && [styles.segmentBtnActive, { backgroundColor: isDark ? colors.card : "#FFFFFF" }],
+            ]}
             onPress={() => setActiveTab("approvals")}
             activeOpacity={0.8}
           >
             <Text
               style={[
                 styles.segmentBtnText,
-                activeTab === "approvals" && styles.segmentBtnTextActive,
+                { color: colors.textSecondary },
+                activeTab === "approvals" && [styles.segmentBtnTextActive, { color: colors.text }],
               ]}
             >
               Approval Requests {pendingApprovalsCount > 0 ? `(${pendingApprovalsCount})` : ""}
@@ -609,20 +619,26 @@ export default function ReservationsScreen() {
 
         {activeTab === "calendar" ? (
           <>
-            <View style={styles.calendarCard}>
+            <View style={[styles.calendarCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.calendarHeader}>
-                <TouchableOpacity style={styles.monthButton} onPress={() => moveMonth(-1)}>
-                  <Text style={styles.monthButtonText}>{"<"}</Text>
+                <TouchableOpacity
+                  style={[styles.monthButton, { backgroundColor: isDark ? colors.cardSubtle : "#F3F4F6" }]}
+                  onPress={() => moveMonth(-1)}
+                >
+                  <Text style={[styles.monthButtonText, { color: colors.text }]}>{"<"}</Text>
                 </TouchableOpacity>
-                <Text style={styles.monthTitle}>{monthLabel(monthCursor)}</Text>
-                <TouchableOpacity style={styles.monthButton} onPress={() => moveMonth(1)}>
-                  <Text style={styles.monthButtonText}>{">"}</Text>
+                <Text style={[styles.monthTitle, { color: colors.text }]}>{monthLabel(monthCursor)}</Text>
+                <TouchableOpacity
+                  style={[styles.monthButton, { backgroundColor: isDark ? colors.cardSubtle : "#F3F4F6" }]}
+                  onPress={() => moveMonth(1)}
+                >
+                  <Text style={[styles.monthButtonText, { color: colors.text }]}>{">"}</Text>
                 </TouchableOpacity>
               </View>
 
               <View style={styles.weekdayRow}>
                 {weekdayLabels.map((label) => (
-                  <Text key={label} style={styles.weekdayText}>
+                  <Text key={label} style={[styles.weekdayText, { color: colors.textSecondary }]}>
                     {label}
                   </Text>
                 ))}
@@ -640,11 +656,23 @@ export default function ReservationsScreen() {
                       return (
                         <TouchableOpacity
                           key={cell.key}
-                          style={[styles.dayCell, selected && styles.dayCellSelected]}
+                          style={[
+                            styles.dayCell,
+                            selected && [
+                              styles.dayCellSelected,
+                              { backgroundColor: isDark ? "rgba(252, 123, 84, 0.22)" : "#FFE8E1" },
+                            ],
+                          ]}
                           onPress={() => setSelectedDateKey(cell.key)}
                           activeOpacity={0.8}
                         >
-                          <Text style={[styles.dayText, cell.hasReservations && styles.dayTextBooked]}>
+                          <Text
+                            style={[
+                              styles.dayText,
+                              { color: colors.text },
+                              cell.hasReservations && styles.dayTextBooked,
+                            ]}
+                          >
                             {cell.day}
                           </Text>
                           {cell.hasReservations && (
@@ -661,51 +689,53 @@ export default function ReservationsScreen() {
             </View>
 
             {/* Selected Date Bookings Section */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>
+            <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
                 {selectedDateKey ? `Bookings for ${formatDateString(selectedDateKey)}` : "Selected Date"}
               </Text>
               {selectedReservations.length === 0 ? (
-                <Text style={styles.emptyText}>No bookings on this date.</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No bookings on this date.</Text>
               ) : (
                 selectedReservations.map((reservation) => (
-                  <View key={reservation.id} style={styles.reservationCard}>
+                  <View key={reservation.id} style={[styles.reservationCard, { borderTopColor: isDark ? colors.border : "#F3F4F6" }]}>
                     <View style={styles.rowBetween}>
-                      <Text style={styles.packageName}>{reservation.packageName}</Text>
-                      <Text style={styles.amount}>{formatAmount(reservation.amount)}</Text>
+                      <Text style={[styles.packageName, { color: colors.text }]}>{reservation.packageName}</Text>
+                      <Text style={[styles.amount, { color: colors.text }]}>{formatAmount(reservation.amount)}</Text>
                     </View>
                     <View style={styles.packageBadgeRow}>
                       {reservation.requiresApproval ? (
-                        <View style={[styles.miniBadge, styles.miniBadgeApproval]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextApproval]}>
+                        <View style={[styles.miniBadge, styles.miniBadgeApproval, isDark && { backgroundColor: "rgba(59, 130, 246, 0.15)", borderColor: "rgba(59, 130, 246, 0.3)" }]}>
+                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextApproval, isDark && { color: "#60A5FA" }]}>
                             Requires Approval
                           </Text>
                         </View>
                       ) : reservation.requiresReservation ? (
-                        <View style={[styles.miniBadge, styles.miniBadgeReservation]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextReservation]}>
+                        <View style={[styles.miniBadge, styles.miniBadgeReservation, isDark && { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)" }]}>
+                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextReservation, isDark && { color: "#FBBF24" }]}>
                             Requires Reservation
                           </Text>
                         </View>
                       ) : (
-                        <View style={[styles.miniBadge, styles.miniBadgeNormal]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextNormal]}>
+                        <View style={[styles.miniBadge, styles.miniBadgeNormal, isDark && { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)" }]}>
+                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextNormal, isDark && { color: "#34D399" }]}>
                             Normal Package
                           </Text>
                         </View>
                       )}
-                      <Text style={styles.statusBadgeSmall}>{reservation.status.toUpperCase()}</Text>
+                      <Text style={[styles.statusBadgeSmall, isDark && { backgroundColor: colors.cardSubtle, color: colors.textSecondary }]}>
+                        {reservation.status.toUpperCase()}
+                      </Text>
                     </View>
-                    <Text style={styles.metaOffering}>{reservation.offeringName}</Text>
+                    <Text style={[styles.metaOffering, { color: colors.textSecondary }]}>{reservation.offeringName}</Text>
                     <View style={styles.coupleRow}>
-                      <Text style={styles.coupleLabel}>Couple:</Text>
-                      <Text style={styles.coupleValue}>
+                      <Text style={[styles.coupleLabel, { color: colors.textSecondary }]}>Couple:</Text>
+                      <Text style={[styles.coupleValue, { color: colors.text }]}>
                         {reservation.visitorName}{" "}
                         {reservation.visitorEmail ? `(${reservation.visitorEmail})` : ""}
                       </Text>
                     </View>
                     {reservation.visitorPhone ? (
-                      <Text style={styles.phoneMeta}>📞 {reservation.visitorPhone}</Text>
+                      <Text style={[styles.phoneMeta, { color: colors.textSecondary }]}>📞 {reservation.visitorPhone}</Text>
                     ) : null}
                   </View>
                 ))
@@ -713,29 +743,29 @@ export default function ReservationsScreen() {
             </View>
 
             {/* Upcoming Bookings Section */}
-            <View style={styles.sectionCard}>
+            <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.rowBetween}>
-                <Text style={styles.sectionTitle}>Upcoming Bookings</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Upcoming Bookings</Text>
                 <View style={styles.countBadge}>
                   <Text style={styles.countBadgeText}>{upcomingBookings.length}</Text>
                 </View>
               </View>
-              <Text style={styles.sectionSub}>
+              <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
                 Chronological list of all upcoming booked packages across all services
               </Text>
 
               {upcomingBookings.length === 0 ? (
-                <Text style={styles.emptyText}>No upcoming bookings scheduled yet.</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No upcoming bookings scheduled yet.</Text>
               ) : (
                 upcomingBookings.map((booking) => (
-                  <View key={`upcoming-${booking.id}`} style={styles.reservationCard}>
+                  <View key={`upcoming-${booking.id}`} style={[styles.reservationCard, { borderTopColor: isDark ? colors.border : "#F3F4F6" }]}>
                     <View style={styles.rowBetween}>
                       <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={styles.packageName}>{booking.packageName}</Text>
-                        <Text style={styles.metaOffering}>{booking.offeringName}</Text>
+                        <Text style={[styles.packageName, { color: colors.text }]}>{booking.packageName}</Text>
+                        <Text style={[styles.metaOffering, { color: colors.textSecondary }]}>{booking.offeringName}</Text>
                       </View>
                       <View style={{ alignItems: "flex-end" }}>
-                        <Text style={styles.amount}>{formatAmount(booking.amount)}</Text>
+                        <Text style={[styles.amount, { color: colors.text }]}>{formatAmount(booking.amount)}</Text>
                         <Text style={styles.upcomingDateText}>
                           📅 {formatDateString(booking.bookingDate)}
                         </Text>
@@ -743,29 +773,31 @@ export default function ReservationsScreen() {
                     </View>
                     <View style={styles.packageBadgeRow}>
                       {booking.requiresApproval ? (
-                        <View style={[styles.miniBadge, styles.miniBadgeApproval]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextApproval]}>
+                        <View style={[styles.miniBadge, styles.miniBadgeApproval, isDark && { backgroundColor: "rgba(59, 130, 246, 0.15)", borderColor: "rgba(59, 130, 246, 0.3)" }]}>
+                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextApproval, isDark && { color: "#60A5FA" }]}>
                             Requires Approval
                           </Text>
                         </View>
                       ) : booking.requiresReservation ? (
-                        <View style={[styles.miniBadge, styles.miniBadgeReservation]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextReservation]}>
+                        <View style={[styles.miniBadge, styles.miniBadgeReservation, isDark && { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)" }]}>
+                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextReservation, isDark && { color: "#FBBF24" }]}>
                             Requires Reservation
                           </Text>
                         </View>
                       ) : (
-                        <View style={[styles.miniBadge, styles.miniBadgeNormal]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextNormal]}>
+                        <View style={[styles.miniBadge, styles.miniBadgeNormal, isDark && { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)" }]}>
+                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextNormal, isDark && { color: "#34D399" }]}>
                             Normal Package
                           </Text>
                         </View>
                       )}
-                      <Text style={styles.statusBadgeSmall}>{booking.status.toUpperCase()}</Text>
+                      <Text style={[styles.statusBadgeSmall, isDark && { backgroundColor: colors.cardSubtle, color: colors.textSecondary }]}>
+                        {booking.status.toUpperCase()}
+                      </Text>
                     </View>
                     <View style={styles.coupleRow}>
-                      <Text style={styles.coupleLabel}>Couple:</Text>
-                      <Text style={styles.coupleValue}>
+                      <Text style={[styles.coupleLabel, { color: colors.textSecondary }]}>Couple:</Text>
+                      <Text style={[styles.coupleValue, { color: colors.text }]}>
                         {booking.visitorName}{" "}
                         {booking.visitorEmail ? `(${booking.visitorEmail})` : ""}
                       </Text>
@@ -778,8 +810,8 @@ export default function ReservationsScreen() {
         ) : (
           <View style={styles.approvalsContainer}>
             {approvalRequests.length === 0 ? (
-              <View style={styles.emptyApprovalsCard}>
-                <Text style={styles.emptyText}>No approval requests found.</Text>
+              <View style={[styles.emptyApprovalsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No approval requests found.</Text>
               </View>
             ) : (
               approvalRequests.map((req) => {
@@ -791,11 +823,11 @@ export default function ReservationsScreen() {
                 const isPurchased = status === "purchased";
 
                 return (
-                  <View key={req.id} style={styles.approvalCard}>
+                  <View key={req.id} style={[styles.approvalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <View style={styles.approvalHeader}>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.approvalPackageTitle}>{req.packageName}</Text>
-                        <Text style={styles.approvalOfferingTitle}>{req.offeringName}</Text>
+                        <Text style={[styles.approvalPackageTitle, { color: colors.text }]}>{req.packageName}</Text>
+                        <Text style={[styles.approvalOfferingTitle, { color: colors.textSecondary }]}>{req.offeringName}</Text>
                       </View>
                       <View
                         style={[
@@ -823,43 +855,43 @@ export default function ReservationsScreen() {
                     </View>
 
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Couple:</Text>
-                      <Text style={styles.detailValue}>
+                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Couple:</Text>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>
                         {req.visitorName} {req.visitorEmail ? `(${req.visitorEmail})` : ""}
                       </Text>
                     </View>
 
                     {req.visitorPhone ? (
                       <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Phone:</Text>
-                        <Text style={styles.detailValue}>{req.visitorPhone}</Text>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Phone:</Text>
+                        <Text style={[styles.detailValue, { color: colors.text }]}>{req.visitorPhone}</Text>
                       </View>
                     ) : null}
 
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Requested Date:</Text>
+                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Requested Date:</Text>
                       <Text style={styles.detailValueHighlight}>
                         {formatDateString(req.bookingDate)}
                       </Text>
                     </View>
 
                     {req.userNote ? (
-                      <View style={styles.noteBox}>
-                        <Text style={styles.noteBoxLabel}>Couple's Note:</Text>
-                        <Text style={styles.noteBoxContent}>"{req.userNote}"</Text>
+                      <View style={[styles.noteBox, { backgroundColor: isDark ? colors.cardSubtle : "#F9FAFB" }]}>
+                        <Text style={[styles.noteBoxLabel, { color: colors.textSecondary }]}>Couple's Note:</Text>
+                        <Text style={[styles.noteBoxContent, { color: colors.text }]}>"{req.userNote}"</Text>
                       </View>
                     ) : null}
 
                     {req.vendorMessage ? (
-                      <View style={styles.vendorResponseBox}>
-                        <Text style={styles.noteBoxLabel}>Your Response:</Text>
-                        <Text style={styles.noteBoxContent}>"{req.vendorMessage}"</Text>
+                      <View style={[styles.vendorResponseBox, { backgroundColor: isDark ? "rgba(37, 99, 235, 0.15)" : "#EFF6FF" }]}>
+                        <Text style={[styles.noteBoxLabel, { color: isDark ? "#93C5FD" : "#4B5563" }]}>Your Response:</Text>
+                        <Text style={[styles.noteBoxContent, { color: colors.text }]}>"{req.vendorMessage}"</Text>
                       </View>
                     ) : null}
 
                     {isApproved && !isExpired && (
-                      <View style={styles.countdownBox}>
-                        <Text style={styles.countdownText}>
+                      <View style={[styles.countdownBox, isDark && { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
+                        <Text style={[styles.countdownText, isDark && { color: "#34D399" }]}>
                           Couple has 24h from approval to pay advance.
                         </Text>
                       </View>
@@ -868,14 +900,14 @@ export default function ReservationsScreen() {
                     {isPending && (
                       <View style={styles.approvalActionRow}>
                         <TouchableOpacity
-                          style={[styles.actionBtn, styles.declineBtn]}
+                          style={[styles.actionBtn, styles.declineBtn, isDark && { backgroundColor: "rgba(220, 38, 38, 0.15)", borderColor: "rgba(220, 38, 38, 0.3)" }]}
                           onPress={() => {
                             setResponseNote("");
                             setActiveApprovalModal({ request: req, action: "reject" });
                           }}
                           activeOpacity={0.8}
                         >
-                          <Text style={styles.declineBtnText}>Decline</Text>
+                          <Text style={[styles.declineBtnText, isDark && { color: "#F87171" }]}>Decline</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[styles.actionBtn, styles.approveBtn]}
@@ -912,11 +944,11 @@ export default function ReservationsScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.modalOverlay}
         >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
               {activeApprovalModal?.action === "approve" ? "Approve Request" : "Decline Request"}
             </Text>
-            <Text style={styles.modalSubtitle}>
+            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
               {activeApprovalModal?.action === "approve"
                 ? `Approve booking for ${activeApprovalModal?.request.visitorName} on ${formatDateString(
                     activeApprovalModal?.request.bookingDate || ""
@@ -924,15 +956,15 @@ export default function ReservationsScreen() {
                 : `Are you sure you want to decline this booking request for ${activeApprovalModal?.request.visitorName}?`}
             </Text>
 
-            <Text style={styles.inputLabel}>Message to Couple (Optional):</Text>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Message to Couple (Optional):</Text>
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]}
               placeholder={
                 activeApprovalModal?.action === "approve"
                   ? "e.g. Happy to accommodate you! Looking forward to meeting."
                   : "e.g. Sorry, we are not available on this date."
               }
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={isDark ? "#64748B" : "#9CA3AF"}
               multiline
               numberOfLines={3}
               value={responseNote}
@@ -942,14 +974,14 @@ export default function ReservationsScreen() {
 
             <View style={styles.modalActions}>
               <TouchableOpacity
-                style={styles.modalCancelBtn}
+                style={[styles.modalCancelBtn, { borderColor: colors.border }]}
                 onPress={() => {
                   setActiveApprovalModal(null);
                   setResponseNote("");
                 }}
                 disabled={actionLoading}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[

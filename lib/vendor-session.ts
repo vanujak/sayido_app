@@ -14,6 +14,7 @@ export type VendorSession = {
   authProvider?: "google" | "password";
   biometricsEnabled?: boolean;
   biometricsOptInPrompted?: boolean;
+  themeMode?: "system" | "light" | "dark";
 };
 
 const SESSION_KEY = "__sayido_vendor_session__";
@@ -133,6 +134,7 @@ export const clearVendorSession = (keepProfile = false) => {
       authProvider: memorySession.authProvider,
       biometricsEnabled: memorySession.biometricsEnabled,
       biometricsOptInPrompted: memorySession.biometricsOptInPrompted,
+      themeMode: memorySession.themeMode,
     };
     writeLocalStorage(memorySession);
     if (SESSION_FILE) {

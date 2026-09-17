@@ -80,7 +80,7 @@ export function Shimmer({
     >
       <Animated.View
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           {
             width: "100%",
             transform: [{ translateX }],

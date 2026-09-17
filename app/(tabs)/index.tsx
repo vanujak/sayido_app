@@ -15,6 +15,7 @@ import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
 import { Bell, DollarSign, Eye, Package, Users } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardSkeleton, NotificationListSkeleton } from "@/components/ui/skeletons";
+import { useAppTheme } from "@/context/ThemeContext";
 import {
   Alert,
   BackHandler,
@@ -562,6 +563,7 @@ const registerVendorPushToken = async (
 
 export default function Dashboard() {
   const router = useRouter();
+  const { colors, isDark } = useAppTheme();
   const { width } = useWindowDimensions();
   const vendorSession = getVendorSession();
   const params = useGlobalSearchParams<{
@@ -1192,29 +1194,29 @@ export default function Dashboard() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
           <View>
-            <View style={styles.welcomePill}>
-              <Text style={styles.welcomePillText}>Welcome back</Text>
+            <View style={[styles.welcomePill, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.welcomePillText, { color: colors.textSecondary }]}>Welcome back</Text>
             </View>
-            <Text style={styles.name} numberOfLines={1}>
+            <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
               {vendorName}
             </Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
-              style={styles.iconButton}
+              style={[styles.iconButton, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={handleNotifications}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="Notifications"
             >
-              <Bell size={20} color="#1A2438" />
+              <Bell size={20} color={colors.text} />
               {totalNotificationCount > 0 && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>
@@ -1239,17 +1241,22 @@ export default function Dashboard() {
                 key={card.key}
                 style={[
                   styles.metricCard,
-                  { width: metricCardWidth, minHeight: isCompactScreen ? 134 : 144 },
+                  {
+                    width: metricCardWidth,
+                    minHeight: isCompactScreen ? 134 : 144,
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                  },
                 ]}
               >
                 <View style={styles.metricHeader}>
-                  <Text style={styles.metricLabel}>{card.label}</Text>
+                  <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>{card.label}</Text>
                   <Icon size={20} color={card.iconColor} strokeWidth={2.1} />
                 </View>
                 {isRevenueCard ? (
                   <View style={styles.revenueValueBlock}>
                     <Text
-                      style={styles.revenueCurrency}
+                      style={[styles.revenueCurrency, { color: colors.textSecondary }]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
                       minimumFontScale={0.65}
@@ -1257,7 +1264,7 @@ export default function Dashboard() {
                       LKR
                     </Text>
                     <Text
-                      style={styles.revenueAmount}
+                      style={[styles.revenueAmount, { color: colors.text }]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
                       minimumFontScale={0.45}
@@ -1266,7 +1273,7 @@ export default function Dashboard() {
                     </Text>
                   </View>
                 ) : (
-                  <Text style={styles.metricValue}>{card.value}</Text>
+                  <Text style={[styles.metricValue, { color: colors.text }]}>{card.value}</Text>
                 )}
               </View>
             );
@@ -1274,7 +1281,7 @@ export default function Dashboard() {
         </View>
 
         <View style={styles.insightRow}>
-          <View style={styles.insightCard}>
+          <View style={[styles.insightCard, { backgroundColor: colors.insightCardBg }]}>
             <Text style={styles.insightTitle}>Top Package</Text>
             <Text style={styles.insightValue} numberOfLines={1}>
               {topPackage?.packageName || "No data"}
@@ -1287,7 +1294,7 @@ export default function Dashboard() {
             </Text>
           </View>
 
-          <View style={styles.insightCard}>
+          <View style={[styles.insightCard, { backgroundColor: colors.insightCardBg }]}>
             <Text style={styles.insightTitle}>Peak Month</Text>
             <Text style={styles.insightValue}>
               {peakMonth ? monthFull(peakMonth.month) : "--"}
@@ -1311,9 +1318,15 @@ export default function Dashboard() {
         onRequestClose={() => setNotificationsOpen(false)}
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setNotificationsOpen(false)}>
-          <Pressable style={styles.notificationModal} onPress={(event) => event.stopPropagation()}>
+          <Pressable
+            style={[
+              styles.notificationModal,
+              { backgroundColor: colors.cardElevated, borderColor: colors.border },
+            ]}
+            onPress={(event) => event.stopPropagation()}
+          >
             <View style={styles.notificationHeader}>
-              <Text style={styles.notificationTitle}>
+              <Text style={[styles.notificationTitle, { color: colors.text }]}>
                 Notifications
                 {totalNotificationCount > 0
                   ? ` (${totalNotificationCount > 99 ? "99+" : totalNotificationCount})`
@@ -1326,7 +1339,7 @@ export default function Dashboard() {
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity onPress={() => setNotificationsOpen(false)} activeOpacity={0.8}>
-                  <Text style={styles.notificationClose}>Close</Text>
+                  <Text style={[styles.notificationClose, { color: colors.primary }]}>Close</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1340,12 +1353,24 @@ export default function Dashboard() {
                   const isApproval = item.type === "approval";
                   const fromVisitor = toText(item.senderType).toLowerCase() !== "vendor";
                   return (
-                    <View key={`${item.id}-${item.timestamp}`} style={styles.notificationItem}>
-                      <Text style={styles.notificationItemTitle}>{item.title}</Text>
-                      <Text style={styles.notificationItemMessage} numberOfLines={2}>
+                    <View
+                      key={`${item.id}-${item.timestamp}`}
+                      style={[
+                        styles.notificationItem,
+                        {
+                          backgroundColor: isDark ? colors.card : "#F9FAFB",
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.notificationItemTitle, { color: colors.text }]}>{item.title}</Text>
+                      <Text
+                        style={[styles.notificationItemMessage, { color: colors.textSecondary }]}
+                        numberOfLines={2}
+                      >
                         {item.message}
                       </Text>
-                      <Text style={styles.notificationItemTime}>
+                      <Text style={[styles.notificationItemTime, { color: colors.textMuted }]}>
                         {formatNotificationTime(item.timestamp)}
                       </Text>
                       <View style={styles.notificationActions}>

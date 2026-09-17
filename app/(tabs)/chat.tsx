@@ -18,6 +18,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useAppTheme } from "@/context/ThemeContext";
 import { ArrowLeft, ChevronRight, Mail, Send } from "lucide-react-native";
 
 type ChatMessage = {
@@ -93,11 +94,13 @@ function ChatAvatar({
   imageUrl?: string;
   size?: number;
 }) {
+  const { isDark } = useAppTheme();
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const showImage = Boolean(imageUrl && failedUrl !== imageUrl);
 
   const containerStyle = [
     styles.avatar,
+    isDark && { backgroundColor: "rgba(252, 123, 84, 0.15)", borderColor: "rgba(252, 123, 84, 0.3)" },
     size !== 48 ? { width: size, height: size, borderRadius: size / 2 } : null,
   ];
 
@@ -460,6 +463,7 @@ const formatTimeAgo = (value: string) => {
 };
 
 export default function ChatScreen() {
+  const { colors, isDark } = useAppTheme();
   const router = useRouter();
   const vendorSession = getVendorSession();
   const sessionEmail = vendorSession.email || "";
@@ -840,9 +844,9 @@ export default function ChatScreen() {
 
     if (errorMessage) {
       return (
-        <View style={[styles.centerState, styles.errorCard]}>
-          <Text style={styles.errorTitle}>Unable to load vendor chats</Text>
-          <Text style={styles.errorText}>{errorMessage}</Text>
+        <View style={[styles.centerState, styles.errorCard, isDark && { backgroundColor: "rgba(239, 68, 68, 0.15)", borderColor: "rgba(239, 68, 68, 0.3)" }]}>
+          <Text style={[styles.errorTitle, isDark && { color: "#F87171" }]}>Unable to load vendor chats</Text>
+          <Text style={[styles.errorText, isDark && { color: "#FCA5A5" }]}>{errorMessage}</Text>
         </View>
       );
     }
@@ -850,8 +854,8 @@ export default function ChatScreen() {
     if (!rows.length) {
       return (
         <View style={styles.centerState}>
-          <Text style={styles.emptyTitle}>No conversations yet</Text>
-          <Text style={styles.emptySubtitle}>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No conversations yet</Text>
+          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
             Chats from couples will appear here once they message you.
           </Text>
         </View>
@@ -866,19 +870,23 @@ export default function ChatScreen() {
         >
           <View style={styles.chatHeaderRow}>
             <Pressable
-              style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
+              style={({ pressed }) => [
+                styles.backButton,
+                { backgroundColor: colors.card, borderColor: colors.border },
+                pressed && [styles.backButtonPressed, { backgroundColor: colors.cardSubtle }],
+              ]}
               onPress={handleBackToChatList}
               hitSlop={8}
             >
-              <ArrowLeft size={20} color="#111827" />
+              <ArrowLeft size={20} color={colors.text} />
             </Pressable>
-            <View style={styles.chatHeader}>
+            <View style={[styles.chatHeader, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <ChatAvatar name={activeChat.visitorName} imageUrl={activeChat.visitorAvatarUrl} />
               <View style={styles.chatHeaderContent}>
-                <Text style={styles.chatTitle} numberOfLines={1}>
+                <Text style={[styles.chatTitle, { color: colors.text }]} numberOfLines={1}>
                   {activeChat.visitorName}
                 </Text>
-                <View style={styles.offeringBadge}>
+                <View style={[styles.offeringBadge, isDark && { backgroundColor: "rgba(252, 123, 84, 0.15)", borderColor: "rgba(252, 123, 84, 0.3)" }]}>
                   <Text style={styles.offeringBadgeText} numberOfLines={1}>
                     {activeChat.offeringName}
                   </Text>
@@ -903,8 +911,8 @@ export default function ChatScreen() {
                 return (
                   <View key={`${message.id || message.timestamp || "msg"}-${index}`}>
                     {showDateHeader && (
-                      <View style={styles.dateSeparator}>
-                        <Text style={styles.dateSeparatorText}>
+                      <View style={[styles.dateSeparator, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                        <Text style={[styles.dateSeparatorText, { color: colors.textSecondary }]}>
                           {formatChatDateHeader(message.timestamp)}
                         </Text>
                       </View>
@@ -912,14 +920,16 @@ export default function ChatScreen() {
                     <View
                       style={[
                         styles.messageBubble,
-                        mine ? styles.myMessageBubble : styles.otherMessageBubble,
+                        mine
+                          ? styles.myMessageBubble
+                          : [styles.otherMessageBubble, { backgroundColor: colors.card, borderColor: colors.border }],
                       ]}
                     >
-                      <Text style={mine ? styles.myMessageText : styles.otherMessageText}>
+                      <Text style={mine ? styles.myMessageText : [styles.otherMessageText, { color: colors.text }]}>
                         {toText(message.content, "...")}
                       </Text>
                       {!!timeText && (
-                        <Text style={mine ? styles.myMessageTime : styles.otherMessageTime}>
+                        <Text style={mine ? styles.myMessageTime : [styles.otherMessageTime, { color: colors.textSecondary }]}>
                           {timeText}
                         </Text>
                       )}
@@ -928,16 +938,16 @@ export default function ChatScreen() {
                 );
               })
             ) : (
-              <Text style={styles.emptySubtitle}>No messages in this chat yet.</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>No messages in this chat yet.</Text>
             )}
           </ScrollView>
           <View style={styles.replyBar}>
             <TextInput
               placeholder="Type your reply..."
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={isDark ? "#64748B" : "#9CA3AF"}
               value={replyText}
               onChangeText={setReplyText}
-              style={styles.replyInput}
+              style={[styles.replyInput, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]}
               multiline
             />
             <Pressable
@@ -969,29 +979,33 @@ export default function ChatScreen() {
           return (
             <Pressable
               key={row.chatId}
-              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+              style={({ pressed }) => [
+                styles.card,
+                { backgroundColor: colors.card, borderColor: colors.border },
+                pressed && [styles.cardPressed, { backgroundColor: isDark ? colors.cardSubtle : "#FFF9F6", borderColor: colors.primary }],
+              ]}
               onPress={() => setActiveChatId(row.chatId)}
             >
               <ChatAvatar name={row.visitorName} imageUrl={row.visitorAvatarUrl} />
 
               <View style={styles.cardContent}>
                 <View style={styles.rowHeader}>
-                  <Text style={styles.clientName} numberOfLines={1}>
+                  <Text style={[styles.clientName, { color: colors.text }]} numberOfLines={1}>
                     {row.visitorName}
                   </Text>
-                  <Text style={styles.time}>{formatTimeAgo(row.lastMessageAt)}</Text>
+                  <Text style={[styles.time, { color: colors.textSecondary }]}>{formatTimeAgo(row.lastMessageAt)}</Text>
                 </View>
 
                 <View style={styles.metaRow}>
-                  <View style={styles.offeringBadge}>
+                  <View style={[styles.offeringBadge, isDark && { backgroundColor: "rgba(252, 123, 84, 0.15)", borderColor: "rgba(252, 123, 84, 0.3)" }]}>
                     <Text style={styles.offeringBadgeText} numberOfLines={1}>
                       {row.offeringName}
                     </Text>
                   </View>
                   {!!row.visitorEmail && (
                     <View style={styles.emailContainer}>
-                      <Mail size={11} color="#9CA3AF" />
-                      <Text style={styles.email} numberOfLines={1} ellipsizeMode="tail">
+                      <Mail size={11} color={isDark ? "#64748B" : "#9CA3AF"} />
+                      <Text style={[styles.email, { color: colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
                         {row.visitorEmail}
                       </Text>
                     </View>
@@ -1001,31 +1015,32 @@ export default function ChatScreen() {
                 <Text
                   style={[
                     styles.messagePreview,
+                    { color: colors.textSecondary },
                     !row.lastMessage && styles.messagePreviewEmpty,
                   ]}
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >
                   {isFromVendor ? (
-                    <Text style={styles.messagePreviewSender}>You: </Text>
+                    <Text style={[styles.messagePreviewSender, { color: colors.text }]}>You: </Text>
                   ) : null}
                   {row.lastMessage || "No messages yet"}
                 </Text>
               </View>
 
               <View style={styles.chevronContainer}>
-                <ChevronRight size={18} color="#D1D5DB" />
+                <ChevronRight size={18} color={isDark ? "#64748B" : "#D1D5DB"} />
               </View>
             </Pressable>
           );
         })}
       </View>
     );
-  }, [activeChat, errorMessage, handleSendReply, loading, replyText, rows, sendError, sending]);
+  }, [activeChat, colors, errorMessage, handleSendReply, isDark, loading, replyText, rows, sendError, sending]);
 
   if (activeChat) {
     return (
-      <View style={styles.screen}>
+      <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <View style={[styles.container, styles.chatScreenContainer]}>
           {content}
         </View>
@@ -1034,13 +1049,13 @@ export default function ChatScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.pageTitle}>Vendor Chats</Text>
-        <Text style={styles.pageSubtitle}>Messages with couples and clients</Text>
+        <Text style={[styles.pageTitle, { color: colors.text }]}>Vendor Chats</Text>
+        <Text style={[styles.pageSubtitle, { color: colors.textSecondary }]}>Messages with couples and clients</Text>
         {content}
       </ScrollView>
     </View>

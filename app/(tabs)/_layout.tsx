@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { getVendorSession } from "@/lib/vendor-session";
+import { useAppTheme } from "@/context/ThemeContext";
 
 export default function TabLayout() {
   const session = getVendorSession();
@@ -19,10 +20,10 @@ export default function TabLayout() {
     return <Redirect href="/login" />;
   }
 
+  const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
-  // Design system colors
-  const activeColor = "#FC7B54"; // Brand Orange
-  const inactiveColor = "#9CA3AF"; // Gray
+  const activeColor = colors.tabIconSelected;
+  const inactiveColor = colors.tabIconDefault;
   const bottomInset = Math.max(insets.bottom, Platform.OS === "android" ? 16 : 0);
   const tabBarHeight = 64 + bottomInset;
 
@@ -36,7 +37,7 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         headerShown: false,
         sceneStyle: {
-          backgroundColor: "#FFF8F3",
+          backgroundColor: colors.background,
         },
         tabBarButton: HapticTab,
         tabBarItemStyle: {
@@ -52,22 +53,22 @@ export default function TabLayout() {
             paddingBottom: bottomInset,
             borderTopWidth: 0,
             borderRadius: 22,
-            backgroundColor: "#FFFFFF",
-            shadowColor: "#111827",
+            backgroundColor: colors.tabBarBackground,
+            shadowColor: isDark ? "#000000" : "#111827",
             shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.1,
+            shadowOpacity: isDark ? 0.35 : 0.1,
             shadowRadius: 18,
           },
           default: {
             height: tabBarHeight,
             paddingBottom: bottomInset,
             borderTopWidth: 1,
-            borderTopColor: "#EEF1F5",
-            backgroundColor: "#FFFFFF",
+            borderTopColor: colors.tabBarBorder,
+            backgroundColor: colors.tabBarBackground,
             elevation: 8,
-            shadowColor: "#111827",
+            shadowColor: isDark ? "#000000" : "#111827",
             shadowOffset: { width: 0, height: -2 },
-            shadowOpacity: 0.08,
+            shadowOpacity: isDark ? 0.25 : 0.08,
             shadowRadius: 8,
           },
         }),

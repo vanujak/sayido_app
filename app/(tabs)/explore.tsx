@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ExploreSkeleton } from "@/components/ui/skeletons";
 import { useFocusEffect, useGlobalSearchParams } from "expo-router";
+import { useAppTheme } from "@/context/ThemeContext";
 import {
   AppState,
   Image,
@@ -20,7 +21,7 @@ import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 if (
   Platform.OS === "android" &&
   UIManager.setLayoutAnimationEnabledExperimental &&
-  !(global as unknown as { nativeFabricUIManager?: unknown }).nativeFabricUIManager
+  !(globalThis as unknown as { nativeFabricUIManager?: unknown }).nativeFabricUIManager
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -331,18 +332,19 @@ function OfferingBannerImage({ uri, alt }: { uri: string; alt: string }) {
 }
 
 function PackageThumbnailImage({ uri, alt }: { uri?: string | null; alt?: string }) {
+  const { colors, isDark } = useAppTheme();
   const [hasError, setHasError] = useState(false);
 
   if (hasError || !uri?.trim()) {
     return (
-      <View style={styles.thumbnailPlaceholder}>
+      <View style={[styles.thumbnailPlaceholder, isDark && { backgroundColor: "rgba(252, 123, 84, 0.15)", borderColor: "rgba(252, 123, 84, 0.3)" }]}>
         <Package size={22} color="#FC7B54" />
       </View>
     );
   }
 
   return (
-    <View style={styles.thumbnailContainer}>
+    <View style={[styles.thumbnailContainer, { backgroundColor: isDark ? colors.cardSubtle : "#F3F4F6", borderColor: colors.border }]}>
       <Image
         source={{ uri }}
         style={styles.thumbnailImage}
@@ -354,13 +356,14 @@ function PackageThumbnailImage({ uri, alt }: { uri?: string | null; alt?: string
 }
 
 function PackageCard({ pkg }: { pkg: VendorPackage }) {
+  const { colors, isDark } = useAppTheme();
   return (
-    <View style={styles.packageCard}>
+    <View style={[styles.packageCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={styles.packageHeader}>
         <PackageThumbnailImage uri={pkg.image} alt={pkg.name} />
 
         <View style={styles.headerInfo}>
-          <Text style={styles.packageName} numberOfLines={2}>
+          <Text style={[styles.packageName, { color: colors.text }]} numberOfLines={2}>
             {pkg.name}
           </Text>
 
@@ -370,28 +373,28 @@ function PackageCard({ pkg }: { pkg: VendorPackage }) {
 
           <View style={styles.headerPillsRow}>
             {pkg.requiresApproval ? (
-              <View style={[styles.miniBadge, styles.miniBadgeApproval]}>
-                <Text style={[styles.miniBadgeText, styles.miniBadgeTextApproval]}>
+              <View style={[styles.miniBadge, styles.miniBadgeApproval, isDark && { backgroundColor: "rgba(59, 130, 246, 0.15)", borderColor: "rgba(59, 130, 246, 0.3)" }]}>
+                <Text style={[styles.miniBadgeText, styles.miniBadgeTextApproval, isDark && { color: "#60A5FA" }]}>
                   Requires Approval
                 </Text>
               </View>
             ) : pkg.requiresReservation ? (
-              <View style={[styles.miniBadge, styles.miniBadgeReservation]}>
-                <Text style={[styles.miniBadgeText, styles.miniBadgeTextReservation]}>
+              <View style={[styles.miniBadge, styles.miniBadgeReservation, isDark && { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)" }]}>
+                <Text style={[styles.miniBadgeText, styles.miniBadgeTextReservation, isDark && { color: "#FBBF24" }]}>
                   Requires Reservation
                 </Text>
               </View>
             ) : (
-              <View style={[styles.miniBadge, styles.miniBadgeNormal]}>
-                <Text style={[styles.miniBadgeText, styles.miniBadgeTextNormal]}>
+              <View style={[styles.miniBadge, styles.miniBadgeNormal, isDark && { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)" }]}>
+                <Text style={[styles.miniBadgeText, styles.miniBadgeTextNormal, isDark && { color: "#34D399" }]}>
                   Normal Package
                 </Text>
               </View>
             )}
 
             {pkg.features.length > 0 && (
-              <View style={styles.featureCountBadge}>
-                <Text style={styles.featureCountText}>
+              <View style={[styles.featureCountBadge, isDark && { backgroundColor: colors.cardSubtle }]}>
+                <Text style={[styles.featureCountText, { color: colors.textSecondary }]}>
                   {pkg.features.length} {pkg.features.length === 1 ? "feature" : "features"}
                 </Text>
               </View>
@@ -401,10 +404,10 @@ function PackageCard({ pkg }: { pkg: VendorPackage }) {
       </View>
 
       {(Boolean(pkg.description) || pkg.features.length > 0) && (
-        <View style={styles.packageBody}>
+        <View style={[styles.packageBody, { backgroundColor: isDark ? colors.cardSubtle : "#FAFAFC", borderTopColor: colors.border }]}>
           {!!pkg.description && (
             <View style={styles.descriptionSection}>
-              <Text style={styles.packageDescription}>{pkg.description}</Text>
+              <Text style={[styles.packageDescription, { color: colors.textSecondary }]}>{pkg.description}</Text>
             </View>
           )}
 
@@ -412,12 +415,13 @@ function PackageCard({ pkg }: { pkg: VendorPackage }) {
             <View
               style={[
                 styles.featuresContainer,
+                { borderTopColor: colors.border },
                 !pkg.description && { borderTopWidth: 0, paddingTop: 0 },
               ]}
             >
               <View style={styles.featuresHeaderRow}>
                 <Sparkles size={13} color="#FC7B54" />
-                <Text style={styles.featuresTitle}>What{"'"}s Included</Text>
+                <Text style={[styles.featuresTitle, { color: colors.text }]}>What{"'"}s Included</Text>
               </View>
 
               <View style={styles.featuresList}>
@@ -426,14 +430,14 @@ function PackageCard({ pkg }: { pkg: VendorPackage }) {
                     key={`${pkg.id}-${feature}-${index}`}
                     style={styles.featureItem}
                   >
-                    <View style={styles.featureCheckCircle}>
+                    <View style={[styles.featureCheckCircle, isDark && { backgroundColor: "rgba(16, 185, 129, 0.2)" }]}>
                       <Check
                         size={11}
                         color="#059669"
                         strokeWidth={3}
                       />
                     </View>
-                    <Text style={styles.featureText}>{feature}</Text>
+                    <Text style={[styles.featureText, { color: colors.text }]}>{feature}</Text>
                   </View>
                 ))}
               </View>
@@ -446,6 +450,7 @@ function PackageCard({ pkg }: { pkg: VendorPackage }) {
 }
 
 export default function PackagesScreen() {
+  const { colors, isDark } = useAppTheme();
   const vendorSession = getVendorSession();
   const params = useGlobalSearchParams<{
     id?: string;
@@ -474,44 +479,40 @@ export default function PackagesScreen() {
 
   const loadData = useCallback(async () => {
     setErrorMessage("");
-
     try {
       const resolvedVendorId =
         vendorId || (await loadVendorIdByEmail(vendorEmail)) || readVendorIdFromCookie();
-      if (resolvedVendorId) {
-        setVendorSession({
-          vendorId: resolvedVendorId,
-          email: vendorEmail || vendorSession.email,
-        });
-      }
       if (!resolvedVendorId) {
-        throw new Error("Unable to resolve vendor id for package loading.");
+        throw new Error("Could not resolve vendor id for packages.");
       }
+      setVendorSession({ vendorId: resolvedVendorId, email: vendorEmail || vendorSession.email });
 
       const offerings = resolvedVendorId
         ? await loadOfferingsByVendor(resolvedVendorId)
         : await loadOfferingsFromSession(vendorEmail);
-      const packageRows = await Promise.all(
-        offerings.map(async (offering) => ({
-          offering,
-          packages: await loadPackagesByOffering(offering.id),
-        }))
+      const withPackages = await Promise.all(
+        offerings.map(async (offering) => {
+          const packages = await loadPackagesByOffering(offering.id);
+          return { offering, packages };
+        })
       );
 
-      setSections(packageRows);
+      setSections(withPackages);
+      setExpandedOfferingIds((prev) => {
+        if (Object.keys(prev).length > 0) return prev;
+        const initial: Record<string, boolean> = {};
+        withPackages.forEach((entry, index) => {
+          if (index === 0) initial[entry.offering.id] = true;
+        });
+        return initial;
+      });
     } catch (error) {
       setSections([]);
-      const fallbackHelp =
-        "Unable to load offerings/packages from GraphQL. Confirm vendor id source and resolver query names.";
-      setErrorMessage(
-        error instanceof Error && error.message
-          ? `${error.message}. ${fallbackHelp}`
-          : fallbackHelp
-      );
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load packages right now.");
     } finally {
       setLoading(false);
     }
-  }, [vendorEmail, vendorId, vendorSession.email]);
+  }, [vendorEmail, vendorId]);
 
   useEffect(() => {
     loadData();
@@ -524,8 +525,8 @@ export default function PackagesScreen() {
   );
 
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
         loadData();
       }
     });
@@ -536,9 +537,7 @@ export default function PackagesScreen() {
   }, [loadData]);
 
   const toggleOffering = (offeringId: string) => {
-    if (Platform.OS !== "web") {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    }
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedOfferingIds((prev) => ({
       ...prev,
       [offeringId]: !prev[offeringId],
@@ -551,10 +550,10 @@ export default function PackagesScreen() {
 
   if (errorMessage) {
     return (
-      <View style={styles.screen}>
-        <View style={styles.centerState}>
-          <Text style={styles.errorTitle}>Could not load packages</Text>
-          <Text style={styles.errorText}>{errorMessage}</Text>
+      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+        <View style={[styles.centerState, { backgroundColor: colors.background }]}>
+          <Text style={[styles.errorTitle, { color: colors.text }]}>Could not load packages</Text>
+          <Text style={[styles.errorText, { color: colors.textSecondary }]}>{errorMessage}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={loadData} activeOpacity={0.8}>
             <Text style={styles.retryText}>Try Again</Text>
           </TouchableOpacity>
@@ -564,18 +563,18 @@ export default function PackagesScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Services & Packages</Text>
-        <Text style={styles.subtitle}>Your offerings and their packages</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Services & Packages</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Your offerings and their packages</Text>
 
         {sections.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No services yet</Text>
-            <Text style={styles.emptyText}>
+          <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No services yet</Text>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
               Add services and packages to show them on this page.
             </Text>
           </View>
@@ -587,7 +586,11 @@ export default function PackagesScreen() {
             return (
               <View
                 key={entry.offering.id}
-                style={[styles.offeringCard, isOfferingOpen && styles.offeringCardOpen]}
+                style={[
+                  styles.offeringCard,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                  isOfferingOpen && [styles.offeringCardOpen, { borderColor: colors.primary }],
+                ]}
               >
                 {/* Service Header Accordion Button */}
                 <TouchableOpacity
@@ -599,22 +602,22 @@ export default function PackagesScreen() {
                 >
                   <View style={styles.offeringHeaderMain}>
                     <View style={styles.offeringBadgesRow}>
-                      <View style={styles.categoryBadge}>
+                      <View style={[styles.categoryBadge, isDark && { backgroundColor: "rgba(252, 123, 84, 0.15)", borderColor: "rgba(252, 123, 84, 0.3)" }]}>
                         <Text style={styles.categoryBadgeText}>
                           {entry.offering.category.toUpperCase()}
                         </Text>
                       </View>
-                      <View style={styles.packageCountBadge}>
-                        <Text style={styles.packageCountBadgeText}>
+                      <View style={[styles.packageCountBadge, isDark && { backgroundColor: colors.cardSubtle, borderColor: colors.border }]}>
+                        <Text style={[styles.packageCountBadgeText, { color: colors.textSecondary }]}>
                           {packageCount} {packageCount === 1 ? "Package" : "Packages"}
                         </Text>
                       </View>
                     </View>
 
-                    <Text style={styles.offeringName}>{entry.offering.name}</Text>
+                    <Text style={[styles.offeringName, { color: colors.text }]}>{entry.offering.name}</Text>
 
                     {Boolean(entry.offering.description) && !isOfferingOpen && (
-                      <Text style={styles.offeringDescriptionCollapsed} numberOfLines={1}>
+                      <Text style={[styles.offeringDescriptionCollapsed, { color: colors.textSecondary }]} numberOfLines={1}>
                         {entry.offering.description}
                       </Text>
                     )}
@@ -623,20 +626,21 @@ export default function PackagesScreen() {
                   <View
                     style={[
                       styles.offeringChevronCircle,
-                      isOfferingOpen && styles.offeringChevronCircleOpen,
+                      isDark && { backgroundColor: colors.cardSubtle },
+                      isOfferingOpen && [styles.offeringChevronCircleOpen, isDark && { backgroundColor: "rgba(252, 123, 84, 0.2)" }],
                     ]}
                   >
                     {isOfferingOpen ? (
                       <ChevronUp size={20} color="#FC7B54" strokeWidth={2.5} />
                     ) : (
-                      <ChevronDown size={20} color="#6B7280" strokeWidth={2.5} />
+                      <ChevronDown size={20} color={colors.textSecondary} strokeWidth={2.5} />
                     )}
                   </View>
                 </TouchableOpacity>
 
                 {/* Expanded Service Content: Packages & Details */}
                 {isOfferingOpen && (
-                  <View style={styles.offeringBody}>
+                  <View style={[styles.offeringBody, { borderTopColor: colors.border }]}>
                     {Boolean(entry.offering.banner) && (
                       <OfferingBannerImage
                         uri={entry.offering.banner!}
@@ -645,22 +649,22 @@ export default function PackagesScreen() {
                     )}
 
                     {Boolean(entry.offering.description) && (
-                      <Text style={styles.offeringDescription}>
+                      <Text style={[styles.offeringDescription, { color: colors.textSecondary }]}>
                         {entry.offering.description}
                       </Text>
                     )}
 
                     {entry.packages.length === 0 ? (
-                      <View style={styles.noPackagesBox}>
-                        <Package size={20} color="#9CA3AF" />
-                        <Text style={styles.noPackagesText}>
+                      <View style={[styles.noPackagesBox, { backgroundColor: isDark ? colors.cardSubtle : "#F9FAFB", borderColor: colors.border }]}>
+                        <Package size={20} color={isDark ? "#64748B" : "#9CA3AF"} />
+                        <Text style={[styles.noPackagesText, { color: colors.textSecondary }]}>
                           No packages yet for this service.
                         </Text>
                       </View>
                     ) : (
                       <View style={styles.packagesSection}>
                         <View style={styles.packagesSectionHeader}>
-                          <Text style={styles.packagesSectionTitle}>Packages</Text>
+                          <Text style={[styles.packagesSectionTitle, { color: colors.textSecondary }]}>Packages</Text>
                         </View>
 
                         <View style={styles.packagesList}>

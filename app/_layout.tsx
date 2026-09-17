@@ -8,9 +8,11 @@ import {
   useFonts,
 } from "@expo-google-fonts/outfit";
 import {
+  DarkTheme,
   DefaultTheme,
-  ThemeProvider,
+  ThemeProvider as NavigationThemeProvider,
 } from "expo-router/react-navigation";
+import { ThemeProvider as AppThemeProvider, useAppTheme } from "@/context/ThemeContext";
 import {
   canReceiveNotifications,
   getNotificationsModule,
@@ -24,7 +26,7 @@ import { getVendorSession, initVendorSessionAsync } from "@/lib/vendor-session";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import "react-native-reanimated";
 
@@ -39,6 +41,57 @@ SplashScreen.preventAutoHideAsync();
 export const unstable_settings = {
   initialRouteName: "login",
 };
+
+function RootNavigation() {
+  const { isDark, colors } = useAppTheme();
+
+  const navigationTheme = useMemo(() => {
+    return isDark
+      ? {
+          ...DarkTheme,
+          colors: {
+            ...DarkTheme.colors,
+            primary: colors.primary,
+            background: colors.background,
+            card: colors.card,
+            text: colors.text,
+            border: colors.border,
+          },
+        }
+      : {
+          ...DefaultTheme,
+          colors: {
+            ...DefaultTheme.colors,
+            primary: colors.primary,
+            background: colors.background,
+            card: colors.card,
+            text: colors.text,
+            border: colors.border,
+          },
+        };
+  }, [isDark, colors]);
+
+  return (
+    <NavigationThemeProvider value={navigationTheme}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top"]}>
+        <Stack initialRouteName="login">
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="forgot-password"
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="modal"
+            options={{ presentation: "modal", title: "Modal" }}
+          />
+        </Stack>
+        <StatusBar style={isDark ? "light" : "dark"} />
+      </SafeAreaView>
+    </NavigationThemeProvider>
+  );
+}
 
 export default function RootLayout() {
   const router = useRouter();
@@ -164,24 +217,9 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={DefaultTheme}>
-        <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-          <Stack initialRouteName="login">
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="login" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="forgot-password"
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="modal"
-              options={{ presentation: "modal", title: "Modal" }}
-            />
-          </Stack>
-          <StatusBar style="dark" />
-        </SafeAreaView>
-      </ThemeProvider>
+      <AppThemeProvider>
+        <RootNavigation />
+      </AppThemeProvider>
     </SafeAreaProvider>
   );
 }

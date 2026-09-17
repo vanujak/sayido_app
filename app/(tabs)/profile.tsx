@@ -7,6 +7,7 @@ import {
   setBiometricsEnabled,
 } from "@/lib/biometrics";
 import { ProfileSkeleton } from "@/components/ui/skeletons";
+import { useAppTheme } from "@/context/ThemeContext";
 import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -18,6 +19,19 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+type VendorApiData = {
+  id: string;
+  fname?: string;
+  lname?: string;
+  email?: string;
+  busname?: string;
+  phone?: string;
+  city?: string;
+  location?: string;
+  about?: string;
+  profile_pic_url?: string;
+};
 
 type VendorProfile = {
   fname: string;
@@ -33,6 +47,7 @@ type VendorProfile = {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { colors, isDark, themeMode, toggleTheme } = useAppTheme();
   const params = useGlobalSearchParams<{
     id?: string;
     vendor_id?: string;
@@ -110,8 +125,8 @@ export default function ProfileScreen() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             query: `
-              query GetVendorProfileById($id: String!) {
-                findVendorById(id: $id) {
+              query GetVendorById($id: ID!) {
+                vendor(id: $id) {
                   id
                   email
                   fname
@@ -129,18 +144,18 @@ export default function ProfileScreen() {
           }),
         });
 
-        const payload = await res.json();
-        if (payload?.data?.findVendorById) {
-          const v = payload.data.findVendorById;
+        const json = (await res.json()) as { data?: { vendor?: VendorApiData } };
+        if (json.data?.vendor) {
+          const v = json.data.vendor;
           setProfile({
-            fname: v.fname,
-            lname: v.lname,
-            email: v.email,
-            busname: v.busname,
-            phone: v.phone,
-            city: v.city,
-            location: v.location,
-            about: v.about,
+            fname: v.fname || "",
+            lname: v.lname || "",
+            email: v.email || "",
+            busname: v.busname || "",
+            phone: v.phone || "",
+            city: v.city || "",
+            location: v.location || "",
+            about: v.about || "",
             profilePicUrl: v.profile_pic_url || "",
           });
           setImageError(false);
@@ -154,50 +169,49 @@ export default function ProfileScreen() {
         }
       }
 
-      // 2. If vendorId is missing or lookup failed, query all vendors to match by email
-      const targetEmail = (vendorEmail || "test@gmail.com").trim().toLowerCase();
-      const allRes = await fetch(graphQlUrl, {
-        method: "POST",
-        credentials: apiCredentials,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: `
-            query GetAllVendorsForProfile {
-              findAllVendors {
-                id
-                email
-                fname
-                lname
-                busname
-                phone
-                city
-                location
-                about
-                profile_pic_url
+      // 2. Fallback: fetch all vendors and find by email
+      if (vendorEmail) {
+        const res = await fetch(graphQlUrl, {
+          method: "POST",
+          credentials: apiCredentials,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: `
+              query GetAllVendors {
+                vendors {
+                  id
+                  email
+                  fname
+                  lname
+                  busname
+                  phone
+                  city
+                  location
+                  about
+                  profile_pic_url
+                }
               }
-            }
-          `,
-        }),
-      });
-
-      const allPayload = await allRes.json();
-      const vendors = allPayload?.data?.findAllVendors;
-      if (Array.isArray(vendors) && vendors.length > 0) {
-        const matched =
-          vendors.find(
-            (v: { email?: string }) => v.email && v.email.toLowerCase() === targetEmail
-          ) || vendors[0];
-
+            `,
+          }),
+        });
+        const json = (await res.json()) as {
+          data?: { vendors?: Array<VendorApiData> };
+        };
+        const list = json.data?.vendors || [];
+        const targetEmail = (vendorEmail || "test@gmail.com").trim().toLowerCase();
+        const matched = list.find(
+          (item) => item.email?.toLowerCase() === targetEmail
+        ) || list[0];
         if (matched) {
           setProfile({
-            fname: matched.fname,
-            lname: matched.lname,
-            email: matched.email,
-            busname: matched.busname,
-            phone: matched.phone,
-            city: matched.city,
-            location: matched.location,
-            about: matched.about,
+            fname: matched.fname || "",
+            lname: matched.lname || "",
+            email: matched.email || "",
+            busname: matched.busname || "",
+            phone: matched.phone || "",
+            city: matched.city || "",
+            location: matched.location || "",
+            about: matched.about || "",
             profilePicUrl: matched.profile_pic_url || "",
           });
           setImageError(false);
@@ -259,13 +273,13 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.headerCard}>
-          <View style={styles.avatarRing}>
+        <View style={[styles.headerCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.avatarRing, { backgroundColor: colors.primaryLight }]}>
             {hasAvatar ? (
               <Image
                 source={{ uri: vendor.profilePicUrl }}
@@ -279,44 +293,69 @@ export default function ProfileScreen() {
               </View>
             )}
           </View>
-          <Text style={styles.name}>{fullName}</Text>
-          <Text style={styles.business}>{vendor.busname}</Text>
-          <Text style={styles.email}>{vendor.email}</Text>
+          <Text style={[styles.name, { color: colors.text }]}>{fullName}</Text>
+          <Text style={[styles.business, { color: colors.primary }]}>{vendor.busname}</Text>
+          <Text style={[styles.email, { color: colors.textSecondary }]}>{vendor.email}</Text>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Contact</Text>
-          <InfoRow label="Phone" value={vendor.phone || "Not specified"} />
-          <InfoRow label="City" value={vendor.city || "Not specified"} />
-          <InfoRow label="Location" value={vendor.location || "Not specified"} />
+        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance</Text>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={[styles.switchLabel, { color: colors.text }]}>
+                Dark Theme
+              </Text>
+              <Text style={[styles.switchDesc, { color: colors.textSecondary }]}>
+                {themeMode === "system"
+                  ? "System default (follows device settings)"
+                  : isDark
+                  ? "Dark theme active"
+                  : "Light theme active"}
+              </Text>
+            </View>
+            <Switch
+              value={isDark}
+              onValueChange={toggleTheme}
+              trackColor={{ false: isDark ? "#334155" : "#E5E7EB", true: "#FED7AA" }}
+              thumbColor={isDark ? "#FC7B54" : "#9CA3AF"}
+            />
+          </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Business</Text>
+        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Contact</Text>
+          <InfoRow label="Phone" value={vendor.phone || "Not specified"} colors={colors} />
+          <InfoRow label="City" value={vendor.city || "Not specified"} colors={colors} />
+          <InfoRow label="Location" value={vendor.location || "Not specified"} colors={colors} />
+        </View>
+
+        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Business</Text>
           <InfoRow
             label="About"
             value={vendor.about || "No description added yet."}
             multiline
             maxLines={4}
+            colors={colors}
           />
         </View>
 
         {biometricsSupported && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Security</Text>
+          <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Security</Text>
             <View style={styles.switchRow}>
               <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={styles.switchLabel}>
+                <Text style={[styles.switchLabel, { color: colors.text }]}>
                   {biometricType} Login
                 </Text>
-                <Text style={styles.switchDesc}>
+                <Text style={[styles.switchDesc, { color: colors.textSecondary }]}>
                   Unlock the app using your {biometricType.toLowerCase()} instead of entering your password.
                 </Text>
               </View>
               <Switch
                 value={biometricsOn}
                 onValueChange={handleToggleBiometrics}
-                trackColor={{ false: "#E5E7EB", true: "#FED7AA" }}
+                trackColor={{ false: isDark ? "#334155" : "#E5E7EB", true: "#FED7AA" }}
                 thumbColor={biometricsOn ? "#FC7B54" : "#9CA3AF"}
               />
             </View>
@@ -324,7 +363,14 @@ export default function ProfileScreen() {
         )}
 
         <TouchableOpacity
-          style={styles.logoutButton}
+          style={[
+            styles.logoutButton,
+            {
+              backgroundColor: isDark ? "#1E293B" : "#111827",
+              borderColor: colors.border,
+              borderWidth: isDark ? 1 : 0,
+            },
+          ]}
           activeOpacity={0.8}
           onPress={handleLogout}
         >
@@ -340,17 +386,19 @@ function InfoRow({
   value,
   multiline = false,
   maxLines,
+  colors,
 }: {
   label: string;
   value: string;
   multiline?: boolean;
   maxLines?: number;
+  colors?: { text: string; textSecondary: string; borderLight: string };
 }) {
   return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
+    <View style={[styles.row, colors && { borderTopColor: colors.borderLight }]}>
+      <Text style={[styles.rowLabel, colors && { color: colors.textSecondary }]}>{label}</Text>
       <Text
-        style={[styles.rowValue, multiline && styles.rowValueMultiline]}
+        style={[styles.rowValue, multiline && styles.rowValueMultiline, colors && { color: colors.text }]}
         numberOfLines={maxLines}
       >
         {value}
