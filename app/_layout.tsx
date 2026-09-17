@@ -15,7 +15,12 @@ import {
   canReceiveNotifications,
   getNotificationsModule,
 } from "@/lib/push-notifications";
-import { initVendorSessionAsync } from "@/lib/vendor-session";
+import {
+  initInAppNotificationsAsync,
+  addInAppNotification,
+  markNotificationAsRead,
+} from "@/lib/in-app-notifications";
+import { getVendorSession, initVendorSessionAsync } from "@/lib/vendor-session";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -51,7 +56,10 @@ export default function RootLayout() {
   const [sessionLoaded, setSessionLoaded] = useState(false);
 
   useEffect(() => {
-    void initVendorSessionAsync().finally(() => {
+    void Promise.all([
+      initVendorSessionAsync(),
+      initInAppNotificationsAsync(),
+    ]).finally(() => {
       setSessionLoaded(true);
     });
   }, []);
@@ -65,38 +73,88 @@ export default function RootLayout() {
   useEffect(() => {
     if (!canReceiveNotifications()) return;
 
-    let subscription: { remove: () => void } | undefined;
+    let responseSubscription: { remove: () => void } | undefined;
+    let receivedSubscription: { remove: () => void } | undefined;
     let mounted = true;
 
     void getNotificationsModule().then((Notifications) => {
-      if (!mounted || !Notifications || typeof Notifications.addNotificationResponseReceivedListener !== "function") return;
+      if (!mounted || !Notifications) return;
 
-      subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-        const data = response.notification.request.content.data as {
-          type?: string;
-          chatId?: string;
-          paymentId?: string;
-        };
+      // 1. Capture incoming push notifications while app is running / foregrounded
+      if (typeof Notifications.addNotificationReceivedListener === "function") {
+        receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+          const content = notification.request.content;
+          const vendorId = getVendorSession().vendorId || "";
+          addInAppNotification(vendorId, {
+            id: notification.request.identifier,
+            title: content.title || "New Notification",
+            body: content.body || "",
+            data: (content.data as Record<string, unknown>) || {},
+          });
+        });
+      }
 
-        if (data?.type === "package_purchase") {
-          router.push("/(tabs)/resavations");
-        } else if (data?.type === "package_approval_request") {
-          router.push({
-            pathname: "/(tabs)/resavations",
-            params: { tab: "approvals" },
+      // 2. Capture when user taps a notification banner to open the app
+      if (typeof Notifications.addNotificationResponseReceivedListener === "function") {
+        responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+          const content = response.notification.request.content;
+          const vendorId = getVendorSession().vendorId || "";
+          const identifier = response.notification.request.identifier;
+
+          addInAppNotification(vendorId, {
+            id: identifier,
+            title: content.title || "New Notification",
+            body: content.body || "",
+            data: (content.data as Record<string, unknown>) || {},
           });
-        } else if (data?.type === "chat_message" && typeof data.chatId === "string" && data.chatId) {
-          router.push({
-            pathname: "/(tabs)/chat",
-            params: { chatId: data.chatId },
-          });
-        }
-      });
+          markNotificationAsRead(vendorId, identifier);
+
+          const data = content.data as {
+            type?: string;
+            chatId?: string;
+            paymentId?: string;
+            requestId?: string;
+          };
+
+          if (data?.type === "package_purchase") {
+            router.push("/(tabs)/resavations");
+          } else if (data?.type === "package_approval_request") {
+            router.push({
+              pathname: "/(tabs)/resavations",
+              params: { tab: "approvals" },
+            });
+          } else if (data?.type === "chat_message" && typeof data.chatId === "string" && data.chatId) {
+            router.push({
+              pathname: "/(tabs)/chat",
+              params: { chatId: data.chatId },
+            });
+          }
+        });
+      }
+
+      // 3. Catch notifications already presented in the tray
+      if (typeof Notifications.getPresentedNotificationsAsync === "function") {
+        Notifications.getPresentedNotificationsAsync()
+          .then((presentedList) => {
+            if (!mounted || !Array.isArray(presentedList)) return;
+            const vendorId = getVendorSession().vendorId || "";
+            presentedList.forEach((notif) => {
+              addInAppNotification(vendorId, {
+                id: notif.request.identifier,
+                title: notif.request.content.title || "Notification",
+                body: notif.request.content.body || "",
+                data: (notif.request.content.data as Record<string, unknown>) || {},
+              });
+            });
+          })
+          .catch(() => {});
+      }
     });
 
     return () => {
       mounted = false;
-      subscription?.remove();
+      receivedSubscription?.remove();
+      responseSubscription?.remove();
     };
   }, [router]);
 
@@ -121,7 +179,7 @@ export default function RootLayout() {
               options={{ presentation: "modal", title: "Modal" }}
             />
           </Stack>
-          <StatusBar style="dark" backgroundColor="#ffffff" />
+          <StatusBar style="dark" />
         </SafeAreaView>
       </ThemeProvider>
     </SafeAreaProvider>

@@ -1,5 +1,13 @@
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { getChatSocket } from "@/lib/chat-socket";
+import {
+  getNotificationReadState,
+  setNotificationReadState,
+  getInAppNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  subscribeToNotifications,
+} from "@/lib/in-app-notifications";
 import { registerForPushNotificationsAsync } from "@/lib/push-notifications";
 import { clearVendorSession, getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { formatCoupleName } from "@/lib/formatCoupleName";
@@ -53,19 +61,12 @@ type NotificationPreview = {
   chatId?: string;
   reservationId?: string;
   approvalRequestId?: string;
+  inAppNotificationId?: string;
   title: string;
   message: string;
   timestamp: string;
   senderType?: string;
 };
-
-type NotificationReadState = {
-  dismissedPreviewReadAt: Record<string, number>;
-  seenReservationIds: Record<string, true>;
-  seenApprovalIds?: Record<string, true>;
-};
-
-const NOTIFICATION_READ_STATE_KEY = "__sayido_notification_read_state__";
 
 const toText = (value: unknown, fallback = "") =>
   typeof value === "string" && value.trim() ? value : fallback;
@@ -77,68 +78,6 @@ const toNumber = (value: unknown, fallback = 0) => {
     return Number.isFinite(parsed) ? parsed : fallback;
   }
   return fallback;
-};
-
-const readNotificationStateStore = (): Record<string, NotificationReadState> => {
-  const globalState = globalThis as {
-    [NOTIFICATION_READ_STATE_KEY]?: Record<string, NotificationReadState>;
-  };
-  if (globalState[NOTIFICATION_READ_STATE_KEY]) {
-    return globalState[NOTIFICATION_READ_STATE_KEY] || {};
-  }
-
-  if (typeof localStorage !== "undefined") {
-    try {
-      const raw = localStorage.getItem(NOTIFICATION_READ_STATE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Record<string, NotificationReadState>;
-        if (parsed && typeof parsed === "object") {
-          globalState[NOTIFICATION_READ_STATE_KEY] = parsed;
-          return parsed;
-        }
-      }
-    } catch {
-      // Ignore stored state parse errors.
-    }
-  }
-
-  globalState[NOTIFICATION_READ_STATE_KEY] = {};
-  return {};
-};
-
-const writeNotificationStateStore = (store: Record<string, NotificationReadState>) => {
-  const globalState = globalThis as {
-    [NOTIFICATION_READ_STATE_KEY]?: Record<string, NotificationReadState>;
-  };
-  globalState[NOTIFICATION_READ_STATE_KEY] = store;
-
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(NOTIFICATION_READ_STATE_KEY, JSON.stringify(store));
-  } catch {
-    // Ignore storage errors.
-  }
-};
-
-const getNotificationReadState = (vendorId: string): NotificationReadState => {
-  if (!vendorId) {
-    return { dismissedPreviewReadAt: {}, seenReservationIds: {}, seenApprovalIds: {} };
-  }
-
-  const state = readNotificationStateStore()[vendorId];
-  return {
-    dismissedPreviewReadAt: state?.dismissedPreviewReadAt || {},
-    seenReservationIds: state?.seenReservationIds || {},
-    seenApprovalIds: state?.seenApprovalIds || {},
-  };
-};
-
-const setNotificationReadState = (vendorId: string, state: NotificationReadState) => {
-  if (!vendorId) return;
-  writeNotificationStateStore({
-    ...readNotificationStateStore(),
-    [vendorId]: state,
-  });
 };
 
 const monthShort = (value: string) => {
@@ -664,7 +603,7 @@ export default function Dashboard() {
   const isCompactScreen = width < 390;
   const isWideScreen = width >= 860;
   const metricCardWidth = isWideScreen ? "24%" : "48.6%";
-  const totalNotificationCount = unreadCount + reservationUnreadCount + approvalUnreadCount;
+  const totalNotificationCount = notificationPreviews.length;
 
   // Handle phone hardware back button on root dashboard
   useFocusEffect(
@@ -923,11 +862,17 @@ export default function Dashboard() {
     if (!targetVendorId) {
       setNotificationPreviews([]);
       setReservationUnreadCount(0);
+      setApprovalUnreadCount(0);
       return;
     }
 
     setNotificationsLoading(true);
     try {
+      const currentReadState = getNotificationReadState(targetVendorId);
+      const currentSeenReservations = { ...seenReservationIds, ...currentReadState.seenReservationIds };
+      const currentSeenApprovals = { ...seenApprovalIds, ...(currentReadState.seenApprovalIds || {}) };
+      const currentDismissedPreview = { ...dismissedPreviewReadAt, ...currentReadState.dismissedPreviewReadAt };
+
       const [chatResult, reservationResult, approvalResult, unreadResult] = await Promise.allSettled([
         loadNotificationPreviews(targetVendorId),
         loadReservationNotificationPreviews(targetVendorId),
@@ -946,7 +891,7 @@ export default function Dashboard() {
           ? chatPreviews.filter((item) => {
               const chatId = toText(item.chatId);
               if (!chatId) return false;
-              const dismissedAt = dismissedPreviewReadAt[chatId];
+              const dismissedAt = currentDismissedPreview[chatId];
               if (!dismissedAt) return true;
               const itemTime = new Date(item.timestamp).getTime();
               if (Number.isNaN(itemTime)) return false;
@@ -957,23 +902,75 @@ export default function Dashboard() {
 
       const filteredReservationPreviews = reservationPreviews.filter((item) => {
         const reservationId = toText(item.reservationId);
-        return !!reservationId && !seenReservationIds[reservationId];
+        return !!reservationId && !currentSeenReservations[reservationId];
       });
 
       const filteredApprovalPreviews = approvalPreviews.filter((item) => {
         const approvalRequestId = toText(item.approvalRequestId);
-        return !!approvalRequestId && !seenApprovalIds[approvalRequestId];
+        return !!approvalRequestId && !currentSeenApprovals[approvalRequestId];
+      });
+
+      // Load push notifications received via Firebase / Expo
+      const inAppList = getInAppNotifications(targetVendorId);
+      const unreadInAppPreviews: NotificationPreview[] = inAppList
+        .filter((item) => !item.read)
+        .map((item) => {
+          const notifType =
+            item.data?.type === "chat_message"
+              ? ("chat" as const)
+              : item.data?.type === "package_approval_request"
+              ? ("approval" as const)
+              : item.data?.type === "package_purchase"
+              ? ("reservation" as const)
+              : ("chat" as const);
+          return {
+            id: item.id,
+            inAppNotificationId: item.id,
+            type: notifType,
+            chatId: toText(item.data?.chatId),
+            reservationId: toText(item.data?.paymentId || item.data?.reservationId),
+            approvalRequestId: toText(item.data?.requestId || item.data?.approvalRequestId),
+            title: item.title,
+            message: item.body,
+            timestamp: item.receivedAt,
+          };
+        });
+
+      // Deduplicate: merge in-app push notifications and polled previews
+      const seenKeys = new Set<string>();
+      const combined: NotificationPreview[] = [];
+
+      for (const item of [
+        ...unreadInAppPreviews,
+        ...filteredChatPreviews,
+        ...filteredReservationPreviews,
+        ...filteredApprovalPreviews,
+      ]) {
+        const dedupeKey = item.inAppNotificationId
+          ? `inapp-${item.inAppNotificationId}`
+          : item.reservationId
+          ? `reservation-${item.reservationId}`
+          : item.approvalRequestId
+          ? `approval-${item.approvalRequestId}`
+          : item.chatId
+          ? `chat-${item.chatId}`
+          : item.id;
+
+        if (!seenKeys.has(dedupeKey)) {
+          seenKeys.add(dedupeKey);
+          combined.push(item);
+        }
+      }
+
+      combined.sort((a, b) => {
+        const aDate = new Date(a.timestamp).getTime();
+        const bDate = new Date(b.timestamp).getTime();
+        return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
       });
 
       setReservationUnreadCount(filteredReservationPreviews.length);
       setApprovalUnreadCount(filteredApprovalPreviews.length);
-      setNotificationPreviews(
-        [...filteredChatPreviews, ...filteredReservationPreviews, ...filteredApprovalPreviews].sort((a, b) => {
-          const aDate = new Date(a.timestamp).getTime();
-          const bDate = new Date(b.timestamp).getTime();
-          return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
-        }),
-      );
+      setNotificationPreviews(combined);
     } catch {
       setNotificationPreviews([]);
       setReservationUnreadCount(0);
@@ -1000,29 +997,38 @@ export default function Dashboard() {
   );
 
   const handleMarkAsRead = useCallback(
-    async (chatId: string, timestamp: string) => {
+    async (chatId: string, timestamp: string, inAppNotificationId?: string) => {
       const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
       if (!targetVendorId) return;
 
+      if (inAppNotificationId) {
+        markNotificationAsRead(targetVendorId, inAppNotificationId);
+      }
+
       setMarkingReadChatId(chatId);
       try {
-        await markChatAsRead(chatId, targetVendorId);
+        if (chatId) {
+          await markChatAsRead(chatId, targetVendorId);
+        }
         const markedAt = new Date(timestamp).getTime();
         const dismissedAt = Number.isNaN(markedAt) ? Date.now() : markedAt;
         setDismissedPreviewReadAt((current) => ({
           ...current,
           [chatId]: dismissedAt,
         }));
-        const readState = getNotificationReadState(targetVendorId);
         setNotificationReadState(targetVendorId, {
           dismissedPreviewReadAt: {
-            ...readState.dismissedPreviewReadAt,
             [chatId]: dismissedAt,
           },
-          seenReservationIds: readState.seenReservationIds,
         });
         setNotificationPreviews((current) =>
-          current.filter((item) => !(item.type === "chat" && item.chatId === chatId)),
+          current.filter(
+            (item) =>
+              !(
+                (item.type === "chat" && item.chatId === chatId) ||
+                (inAppNotificationId && item.inAppNotificationId === inAppNotificationId)
+              ),
+          ),
         );
         setUnreadCount((current) => (current > 0 ? current - 1 : 0));
       } catch {
@@ -1034,52 +1040,117 @@ export default function Dashboard() {
     [resolvedVendorId, vendorId],
   );
 
-  const handleMarkReservationSeen = useCallback((reservationId: string) => {
-    if (!reservationId) return;
-    const targetVendorId = notificationStateVendorId || getVendorSession().vendorId || "";
-    setSeenReservationIds((current) => ({
-      ...current,
-      [reservationId]: true,
-    }));
-    if (targetVendorId) {
-      const readState = getNotificationReadState(targetVendorId);
-      setNotificationReadState(targetVendorId, {
-        dismissedPreviewReadAt: readState.dismissedPreviewReadAt,
-        seenReservationIds: {
-          ...readState.seenReservationIds,
-          [reservationId]: true,
-        },
-      });
-    }
-    setReservationUnreadCount((current) => (current > 0 ? current - 1 : 0));
-    setNotificationPreviews((current) =>
-      current.filter((item) => !(item.type === "reservation" && item.reservationId === reservationId)),
-    );
-  }, [notificationStateVendorId]);
+  const handleMarkReservationSeen = useCallback(
+    (reservationId: string, inAppNotificationId?: string) => {
+      if (!reservationId && !inAppNotificationId) return;
+      const targetVendorId = notificationStateVendorId || getVendorSession().vendorId || "";
 
-  const handleMarkApprovalSeen = useCallback((approvalRequestId: string) => {
-    if (!approvalRequestId) return;
-    const targetVendorId = notificationStateVendorId || getVendorSession().vendorId || "";
-    setSeenApprovalIds((current) => ({
-      ...current,
-      [approvalRequestId]: true,
-    }));
-    if (targetVendorId) {
-      const readState = getNotificationReadState(targetVendorId);
-      setNotificationReadState(targetVendorId, {
-        dismissedPreviewReadAt: readState.dismissedPreviewReadAt,
-        seenReservationIds: readState.seenReservationIds,
-        seenApprovalIds: {
-          ...(readState.seenApprovalIds || {}),
+      if (inAppNotificationId && targetVendorId) {
+        markNotificationAsRead(targetVendorId, inAppNotificationId);
+      }
+
+      if (reservationId) {
+        setSeenReservationIds((current) => ({
+          ...current,
+          [reservationId]: true,
+        }));
+        if (targetVendorId) {
+          setNotificationReadState(targetVendorId, {
+            seenReservationIds: {
+              [reservationId]: true,
+            },
+          });
+        }
+      }
+
+      setReservationUnreadCount((current) => (current > 0 ? current - 1 : 0));
+      setNotificationPreviews((current) =>
+        current.filter(
+          (item) =>
+            !(
+              (item.type === "reservation" && item.reservationId === reservationId) ||
+              (inAppNotificationId && item.inAppNotificationId === inAppNotificationId)
+            ),
+        ),
+      );
+    },
+    [notificationStateVendorId],
+  );
+
+  const handleMarkApprovalSeen = useCallback(
+    (approvalRequestId: string, inAppNotificationId?: string) => {
+      if (!approvalRequestId && !inAppNotificationId) return;
+      const targetVendorId = notificationStateVendorId || getVendorSession().vendorId || "";
+
+      if (inAppNotificationId && targetVendorId) {
+        markNotificationAsRead(targetVendorId, inAppNotificationId);
+      }
+
+      if (approvalRequestId) {
+        setSeenApprovalIds((current) => ({
+          ...current,
           [approvalRequestId]: true,
-        },
-      });
-    }
-    setApprovalUnreadCount((current) => (current > 0 ? current - 1 : 0));
-    setNotificationPreviews((current) =>
-      current.filter((item) => !(item.type === "approval" && item.approvalRequestId === approvalRequestId)),
-    );
-  }, [notificationStateVendorId]);
+        }));
+        if (targetVendorId) {
+          setNotificationReadState(targetVendorId, {
+            seenApprovalIds: {
+              [approvalRequestId]: true,
+            },
+          });
+        }
+      }
+
+      setApprovalUnreadCount((current) => (current > 0 ? current - 1 : 0));
+      setNotificationPreviews((current) =>
+        current.filter(
+          (item) =>
+            !(
+              (item.type === "approval" && item.approvalRequestId === approvalRequestId) ||
+              (inAppNotificationId && item.inAppNotificationId === inAppNotificationId)
+            ),
+        ),
+      );
+    },
+    [notificationStateVendorId],
+  );
+
+  const handleMarkAllRead = useCallback(() => {
+    const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+    if (!targetVendorId) return;
+
+    markAllNotificationsAsRead(targetVendorId);
+
+    const now = Date.now();
+    const nextSeenReservations: Record<string, true> = { ...seenReservationIds };
+    const nextSeenApprovals: Record<string, true> = { ...seenApprovalIds };
+    const nextDismissedChat: Record<string, number> = { ...dismissedPreviewReadAt };
+
+    notificationPreviews.forEach((item) => {
+      if (item.reservationId) {
+        nextSeenReservations[item.reservationId] = true;
+      }
+      if (item.approvalRequestId) {
+        nextSeenApprovals[item.approvalRequestId] = true;
+      }
+      if (item.chatId) {
+        nextDismissedChat[item.chatId] = now;
+      }
+    });
+
+    setSeenReservationIds(nextSeenReservations);
+    setSeenApprovalIds(nextSeenApprovals);
+    setDismissedPreviewReadAt(nextDismissedChat);
+    setNotificationReadState(targetVendorId, {
+      seenReservationIds: nextSeenReservations,
+      seenApprovalIds: nextSeenApprovals,
+      dismissedPreviewReadAt: nextDismissedChat,
+    });
+
+    setNotificationPreviews([]);
+    setUnreadCount(0);
+    setReservationUnreadCount(0);
+    setApprovalUnreadCount(0);
+  }, [dismissedPreviewReadAt, notificationPreviews, resolvedVendorId, seenApprovalIds, seenReservationIds, vendorId]);
 
   useEffect(() => {
     if (!notificationsOpen) return;
@@ -1096,6 +1167,20 @@ export default function Dashboard() {
     }, 20000);
 
     return () => clearInterval(timer);
+  }, [refreshNotificationPreviews, resolvedVendorId, vendorId]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToNotifications(() => {
+      const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+      if (targetVendorId) {
+        const readState = getNotificationReadState(targetVendorId);
+        setDismissedPreviewReadAt(readState.dismissedPreviewReadAt);
+        setSeenReservationIds(readState.seenReservationIds);
+        setSeenApprovalIds(readState.seenApprovalIds || {});
+      }
+      void refreshNotificationPreviews();
+    });
+    return () => unsubscribe();
   }, [refreshNotificationPreviews, resolvedVendorId, vendorId]);
 
   const handleLogout = () => {
@@ -1265,9 +1350,16 @@ export default function Dashboard() {
                   ? ` (${totalNotificationCount > 99 ? "99+" : totalNotificationCount})`
                   : ""}
               </Text>
-              <TouchableOpacity onPress={() => setNotificationsOpen(false)} activeOpacity={0.8}>
-                <Text style={styles.notificationClose}>Close</Text>
-              </TouchableOpacity>
+              <View style={styles.notificationHeaderActions}>
+                {totalNotificationCount > 0 && (
+                  <TouchableOpacity onPress={handleMarkAllRead} activeOpacity={0.8}>
+                    <Text style={styles.notificationMarkAll}>Mark all read</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => setNotificationsOpen(false)} activeOpacity={0.8}>
+                  <Text style={styles.notificationClose}>Close</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {notificationsLoading ? (
@@ -1292,14 +1384,25 @@ export default function Dashboard() {
                           style={styles.notificationOpenButton}
                           onPress={() => {
                             if (item.chatId) {
+                              void handleMarkAsRead(item.chatId, item.timestamp, item.inAppNotificationId);
                               handleOpenChatFromNotification(item.chatId);
                             } else if (isApproval) {
+                              if (item.approvalRequestId) {
+                                handleMarkApprovalSeen(item.approvalRequestId, item.inAppNotificationId);
+                              } else if (item.inAppNotificationId && notificationStateVendorId) {
+                                markNotificationAsRead(notificationStateVendorId, item.inAppNotificationId);
+                              }
                               setNotificationsOpen(false);
                               router.push({
                                 pathname: "/(tabs)/resavations",
                                 params: { tab: "approvals" },
                               });
                             } else {
+                              if (item.reservationId) {
+                                handleMarkReservationSeen(item.reservationId, item.inAppNotificationId);
+                              } else if (item.inAppNotificationId && notificationStateVendorId) {
+                                markNotificationAsRead(notificationStateVendorId, item.inAppNotificationId);
+                              }
                               setNotificationsOpen(false);
                               router.push("/(tabs)/resavations");
                             }
@@ -1321,7 +1424,7 @@ export default function Dashboard() {
                               markingReadChatId === item.chatId &&
                                 styles.notificationReadButtonDisabled,
                             ]}
-                            onPress={() => handleMarkAsRead(item.chatId!, item.timestamp)}
+                            onPress={() => handleMarkAsRead(item.chatId!, item.timestamp, item.inAppNotificationId)}
                             activeOpacity={0.85}
                             disabled={markingReadChatId === item.chatId}
                           >
@@ -1330,19 +1433,19 @@ export default function Dashboard() {
                             </Text>
                           </TouchableOpacity>
                         )}
-                        {!isChat && !isApproval && item.reservationId && (
+                        {!isChat && !isApproval && (item.reservationId || item.inAppNotificationId) && (
                           <TouchableOpacity
                             style={styles.notificationReadButton}
-                            onPress={() => handleMarkReservationSeen(item.reservationId!)}
+                            onPress={() => handleMarkReservationSeen(item.reservationId || "", item.inAppNotificationId)}
                             activeOpacity={0.85}
                           >
                             <Text style={styles.notificationReadText}>Mark as read</Text>
                           </TouchableOpacity>
                         )}
-                        {isApproval && item.approvalRequestId && (
+                        {isApproval && (item.approvalRequestId || item.inAppNotificationId) && (
                           <TouchableOpacity
                             style={styles.notificationReadButton}
-                            onPress={() => handleMarkApprovalSeen(item.approvalRequestId!)}
+                            onPress={() => handleMarkApprovalSeen(item.approvalRequestId || "", item.inAppNotificationId)}
                             activeOpacity={0.85}
                           >
                             <Text style={styles.notificationReadText}>Mark as read</Text>
@@ -1620,10 +1723,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 10,
   },
+  notificationHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   notificationTitle: {
     fontFamily: "Outfit_700Bold",
     fontSize: 18,
     color: "#1A2438",
+  },
+  notificationMarkAll: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#2563EB",
+    marginRight: 12,
   },
   notificationClose: {
     fontFamily: "Montserrat_600SemiBold",
