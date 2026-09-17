@@ -12,7 +12,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -468,7 +467,6 @@ export default function ChatScreen() {
 
   const [rows, setRows] = useState<ChatRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [activeChatId, setActiveChatId] = useState("");
   const [replyText, setReplyText] = useState("");
@@ -602,7 +600,6 @@ export default function ChatScreen() {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load chats right now.");
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [sessionEmail, vendorEmail, vendorId]);
 
@@ -867,20 +864,25 @@ export default function ChatScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.chatDetail}
         >
-          <Pressable style={styles.backButton} onPress={handleBackToChatList}>
-            <ArrowLeft size={14} color="#FC7B54" />
-            <Text style={styles.backButtonText}>Back to chats</Text>
-          </Pressable>
-          <View style={styles.chatHeader}>
-            <ChatAvatar name={activeChat.visitorName} imageUrl={activeChat.visitorAvatarUrl} />
-            <View style={styles.chatHeaderContent}>
-              <Text style={styles.chatTitle} numberOfLines={1}>
-                {activeChat.visitorName}
-              </Text>
-              <View style={styles.offeringBadge}>
-                <Text style={styles.offeringBadgeText} numberOfLines={1}>
-                  {activeChat.offeringName}
+          <View style={styles.chatHeaderRow}>
+            <Pressable
+              style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
+              onPress={handleBackToChatList}
+              hitSlop={8}
+            >
+              <ArrowLeft size={20} color="#111827" />
+            </Pressable>
+            <View style={styles.chatHeader}>
+              <ChatAvatar name={activeChat.visitorName} imageUrl={activeChat.visitorAvatarUrl} />
+              <View style={styles.chatHeaderContent}>
+                <Text style={styles.chatTitle} numberOfLines={1}>
+                  {activeChat.visitorName}
                 </Text>
+                <View style={styles.offeringBadge}>
+                  <Text style={styles.offeringBadgeText} numberOfLines={1}>
+                    {activeChat.offeringName}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
@@ -1025,8 +1027,6 @@ export default function ChatScreen() {
     return (
       <View style={styles.screen}>
         <View style={[styles.container, styles.chatScreenContainer]}>
-          <Text style={styles.pageTitle}>Vendor Chats</Text>
-          <Text style={styles.pageSubtitle}>Messages with couples and clients</Text>
           {content}
         </View>
       </View>
@@ -1037,17 +1037,7 @@ export default function ChatScreen() {
     <View style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.container}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor="#FC7B54"
-            colors={["#FC7B54"]}
-            onRefresh={() => {
-              setRefreshing(true);
-              void loadData();
-            }}
-          />
-        }
+        showsVerticalScrollIndicator={false}
       >
         <Text style={styles.pageTitle}>Vendor Chats</Text>
         <Text style={styles.pageSubtitle}>Messages with couples and clients</Text>
@@ -1068,6 +1058,8 @@ const styles = StyleSheet.create({
   },
   chatScreenContainer: {
     flex: 1,
+    paddingTop: Platform.OS === "ios" ? 14 : 16,
+    paddingHorizontal: 16,
     paddingBottom: Platform.OS === "ios" ? 92 : 16,
   },
   pageTitle: {
@@ -1089,24 +1081,33 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 10,
   },
-  backButton: {
-    alignSelf: "flex-start",
+  chatHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    backgroundColor: "#FFF3EE",
-    borderWidth: 1,
-    borderColor: "#FFD2C2",
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    gap: 10,
+    marginBottom: 2,
   },
-  backButtonText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    color: "#FC7B54",
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#D1D5DB",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  backButtonPressed: {
+    opacity: 0.7,
+    backgroundColor: "#F3F4F6",
   },
   chatHeader: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -1115,7 +1116,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#D1D5DB",
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,

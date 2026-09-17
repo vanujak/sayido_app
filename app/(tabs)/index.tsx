@@ -9,10 +9,10 @@ import {
   subscribeToNotifications,
 } from "@/lib/in-app-notifications";
 import { registerForPushNotificationsAsync } from "@/lib/push-notifications";
-import { clearVendorSession, getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { formatCoupleName } from "@/lib/formatCoupleName";
 import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
-import { Bell, DollarSign, Eye, LogOut, Package, Users } from "lucide-react-native";
+import { Bell, DollarSign, Eye, Package, Users } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardSkeleton, NotificationListSkeleton } from "@/components/ui/skeletons";
 import {
@@ -21,7 +21,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -582,7 +581,6 @@ export default function Dashboard() {
   });
   const [payments, setPayments] = useState<VendorPayment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
   const [resolvedVendorId, setResolvedVendorId] = useState("");
@@ -690,7 +688,6 @@ export default function Dashboard() {
       );
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [vendorEmail, vendorId, vendorSession.email]);
 
@@ -776,11 +773,6 @@ export default function Dashboard() {
       };
     }, [vendorEmail, vendorId]),
   );
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadDashboardData();
-  }, [loadDashboardData]);
 
   const completedPayments = useMemo(
     () => payments.filter((payment) => payment.status === "completed"),
@@ -1183,12 +1175,6 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [refreshNotificationPreviews, resolvedVendorId, vendorId]);
 
-  const handleLogout = () => {
-    clearVendorSession();
-    setNotificationsOpen(false);
-    router.replace("/login");
-  };
-
   if (loading) {
     return <DashboardSkeleton />;
   }
@@ -1209,14 +1195,6 @@ export default function Dashboard() {
     <View style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.container}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#FC7B54"
-            colors={["#FC7B54"]}
-          />
-        }
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
@@ -1236,7 +1214,7 @@ export default function Dashboard() {
               accessibilityRole="button"
               accessibilityLabel="Notifications"
             >
-              <Bell size={18} color="#1A2438" />
+              <Bell size={20} color="#1A2438" />
               {totalNotificationCount > 0 && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>
@@ -1244,15 +1222,6 @@ export default function Dashboard() {
                   </Text>
                 </View>
               )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.iconButton, styles.exitButton]}
-              onPress={handleLogout}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel="Log out"
-            >
-              <LogOut size={18} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1270,12 +1239,12 @@ export default function Dashboard() {
                 key={card.key}
                 style={[
                   styles.metricCard,
-                  { width: metricCardWidth, minHeight: isCompactScreen ? 184 : 198 },
+                  { width: metricCardWidth, minHeight: isCompactScreen ? 134 : 144 },
                 ]}
               >
                 <View style={styles.metricHeader}>
                   <Text style={styles.metricLabel}>{card.label}</Text>
-                  <Icon size={22} color={card.iconColor} strokeWidth={2.1} />
+                  <Icon size={20} color={card.iconColor} strokeWidth={2.1} />
                 </View>
                 {isRevenueCard ? (
                   <View style={styles.revenueValueBlock}>
@@ -1325,7 +1294,7 @@ export default function Dashboard() {
             </Text>
             <Text style={styles.insightMeta}>
               {peakMonth
-                ? `${analytics.totalUniqueViews} total veiws`
+                ? `${analytics.totalUniqueViews} total views`
                 : "No monthly data"}
             </Text>
             <Text style={styles.insightRevenue}>
@@ -1491,15 +1460,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#E8EDF5",
     overflow: "visible",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 1,
   },
   badge: {
     position: "absolute",
@@ -1512,7 +1486,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 4,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "#FFFFFF",
     zIndex: 3,
     elevation: 3,
@@ -1522,10 +1496,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: "#FFFFFF",
     lineHeight: 12,
-  },
-  exitButton: {
-    backgroundColor: "#1F2D48",
-    borderColor: "#1F2D48",
   },
   title: {
     fontFamily: "Montserrat_400Regular",
@@ -1555,11 +1525,11 @@ const styles = StyleSheet.create({
   },
   name: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 44,
-    lineHeight: 48,
+    fontSize: 38,
+    lineHeight: 42,
     color: "#1A2438",
     letterSpacing: 0.2,
-    maxWidth: 220,
+    maxWidth: 240,
   },
   metricGrid: {
     flexDirection: "row",
@@ -1574,13 +1544,13 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: "#E8EDF5",
-    justifyContent: "flex-start",
+    justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 10,
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
     elevation: 2,
   },
   metricHeader: {
@@ -1591,48 +1561,48 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 18,
     color: "#607089",
   },
   metricValue: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 52,
-    lineHeight: 56,
+    fontSize: 42,
+    lineHeight: 46,
     color: "#0F2342",
-    marginTop: 26,
+    marginTop: 12,
   },
   metricValueSmall: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 40,
-    lineHeight: 44,
+    fontSize: 36,
+    lineHeight: 40,
     color: "#0F2342",
-    marginTop: 26,
+    marginTop: 12,
   },
   revenueValueBlock: {
-    marginTop: 20,
+    marginTop: 8,
     width: "100%",
   },
   revenueCurrency: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 46,
-    lineHeight: 48,
-    color: "#0F2342",
+    fontSize: 22,
+    lineHeight: 24,
+    color: "#607089",
     includeFontPadding: false,
   },
   revenueAmount: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 56,
-    lineHeight: 58,
+    fontSize: 36,
+    lineHeight: 38,
     color: "#0F2342",
-    marginTop: -2,
+    marginTop: 2,
     includeFontPadding: false,
   },
   insightRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 10,
-    flex: 1,
+    marginBottom: 18,
   },
   insightCard: {
     width: "48.6%",
@@ -1640,6 +1610,12 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 14,
     justifyContent: "space-between",
+    minHeight: 130,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 2,
   },
   insightTitle: {
     fontFamily: "Montserrat_600SemiBold",

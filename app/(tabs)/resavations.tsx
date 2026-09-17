@@ -7,7 +7,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -401,7 +400,6 @@ export default function ReservationsScreen() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [monthCursor, setMonthCursor] = useState(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -458,7 +456,6 @@ export default function ReservationsScreen() {
       );
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [vendorEmail, vendorId]);
 
@@ -514,6 +511,14 @@ export default function ReservationsScreen() {
     [monthCursor, reservationsByDate]
   );
 
+  const monthWeeks = useMemo(() => {
+    const weeks: Array<typeof monthCells> = [];
+    for (let i = 0; i < monthCells.length; i += 7) {
+      weeks.push(monthCells.slice(i, i + 7));
+    }
+    return weeks;
+  }, [monthCells]);
+
   const selectedReservations = selectedDateKey ? reservationsByDate[selectedDateKey] || [] : [];
 
   const pendingApprovalsCount = useMemo(() => {
@@ -535,11 +540,6 @@ export default function ReservationsScreen() {
         return dateA - dateB;
       });
   }, [reservations]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadData();
-  };
 
   const moveMonth = (step: number) => {
     setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + step, 1));
@@ -567,14 +567,6 @@ export default function ReservationsScreen() {
     <View style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.container}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#FC7B54"
-            colors={["#FC7B54"]}
-          />
-        }
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>Bookings</Text>
@@ -617,67 +609,6 @@ export default function ReservationsScreen() {
 
         {activeTab === "calendar" ? (
           <>
-            {/* Inline Pending Approvals Action Banner */}
-            {pendingApprovalsCount > 0 && (
-              <View style={styles.pendingAlertCard}>
-                <View style={styles.pendingAlertHeader}>
-                  <View style={styles.pendingAlertTitleRow}>
-                    <View style={styles.pendingDot} />
-                    <Text style={styles.pendingAlertTitle}>
-                      {pendingApprovalsCount} Approval Request{pendingApprovalsCount > 1 ? "s" : ""} Pending
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => setActiveTab("approvals")}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.pendingAlertViewAll}>View All</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.pendingAlertSub}>
-                  Couples are waiting for your approval to purchase these packages.
-                </Text>
-
-                {approvalRequests
-                  .filter((r) => (r.status || "").toLowerCase() === "pending")
-                  .slice(0, 3)
-                  .map((req) => (
-                    <View key={`quick-${req.id}`} style={styles.miniApprovalItem}>
-                      <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={styles.miniApprovalCouple} numberOfLines={1}>
-                          {req.visitorName}
-                        </Text>
-                        <Text style={styles.miniApprovalMeta} numberOfLines={1}>
-                          {req.packageName} • {formatDateString(req.bookingDate)}
-                        </Text>
-                      </View>
-                      <View style={styles.miniActionRow}>
-                        <TouchableOpacity
-                          style={[styles.miniBtn, styles.miniDeclineBtn]}
-                          onPress={() => {
-                            setResponseNote("");
-                            setActiveApprovalModal({ request: req, action: "reject" });
-                          }}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.miniDeclineText}>Decline</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.miniBtn, styles.miniApproveBtn]}
-                          onPress={() => {
-                            setResponseNote("");
-                            setActiveApprovalModal({ request: req, action: "approve" });
-                          }}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.miniApproveText}>Approve</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-              </View>
-            )}
-
             <View style={styles.calendarCard}>
               <View style={styles.calendarHeader}>
                 <TouchableOpacity style={styles.monthButton} onPress={() => moveMonth(-1)}>
@@ -697,31 +628,35 @@ export default function ReservationsScreen() {
                 ))}
               </View>
 
-              <View style={styles.daysGrid}>
-                {monthCells.map((cell) => {
-                  if (cell.type === "empty") {
-                    return <View key={cell.key} style={styles.dayCell} />;
-                  }
+              <View style={styles.calendarBody}>
+                {monthWeeks.map((week, weekIdx) => (
+                  <View key={`week-${weekIdx}`} style={styles.weekRow}>
+                    {week.map((cell) => {
+                      if (cell.type === "empty") {
+                        return <View key={cell.key} style={styles.dayCell} />;
+                      }
 
-                  const selected = selectedDateKey === cell.key;
-                  return (
-                    <TouchableOpacity
-                      key={cell.key}
-                      style={[styles.dayCell, selected && styles.dayCellSelected]}
-                      onPress={() => setSelectedDateKey(cell.key)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.dayText, cell.hasReservations && styles.dayTextBooked]}>
-                        {cell.day}
-                      </Text>
-                      {cell.hasReservations && (
-                        <View style={styles.dayCountBadge}>
-                          <Text style={styles.dayCountText}>{cell.count}</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
+                      const selected = selectedDateKey === cell.key;
+                      return (
+                        <TouchableOpacity
+                          key={cell.key}
+                          style={[styles.dayCell, selected && styles.dayCellSelected]}
+                          onPress={() => setSelectedDateKey(cell.key)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.dayText, cell.hasReservations && styles.dayTextBooked]}>
+                            {cell.day}
+                          </Text>
+                          {cell.hasReservations && (
+                            <View style={styles.dayCountBadge}>
+                              <Text style={styles.dayCountText}>{cell.count}</Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ))}
               </View>
             </View>
 
@@ -1136,27 +1071,31 @@ const styles = StyleSheet.create({
   },
   weekdayRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   weekdayText: {
-    width: `${100 / 7}%`,
+    flex: 1,
     textAlign: "center",
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 12,
     color: "#6B7280",
   },
-  daysGrid: {
+  calendarBody: {
+    width: "100%",
+  },
+  weekRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
+    marginBottom: 4,
   },
   dayCell: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1,
+    flex: 1,
+    height: 42,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 10,
-    marginBottom: 4,
+    marginHorizontal: 2,
   },
   dayCellSelected: {
     backgroundColor: "#FFE8E1",
@@ -1171,10 +1110,10 @@ const styles = StyleSheet.create({
     color: "#FC7B54",
   },
   dayCountBadge: {
-    marginTop: 3,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
+    marginTop: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: "#FC7B54",
     alignItems: "center",
     justifyContent: "center",
@@ -1183,7 +1122,7 @@ const styles = StyleSheet.create({
   dayCountText: {
     fontFamily: "Montserrat_600SemiBold",
     color: "#FFFFFF",
-    fontSize: 10,
+    fontSize: 9,
   },
   sectionCard: {
     backgroundColor: "#FFFFFF",

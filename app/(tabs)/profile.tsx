@@ -11,7 +11,6 @@ import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Image,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -52,7 +51,6 @@ export default function ProfileScreen() {
 
   const [profile, setProfile] = useState<Partial<VendorProfile> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   const [biometricsOn, setBiometricsOn] = useState(isBiometricsEnabled());
@@ -85,7 +83,6 @@ export default function ProfileScreen() {
   const loadProfile = useCallback(async () => {
     if (!graphQlUrl) {
       setLoading(false);
-      setRefreshing(false);
       return;
     }
 
@@ -216,7 +213,6 @@ export default function ProfileScreen() {
       console.error("Failed to load vendor profile:", err);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [params.id, params.vendor_id, params.vendorId, params.email, params.vendor_email]);
 
@@ -229,11 +225,6 @@ export default function ProfileScreen() {
       loadProfile();
     }, [loadProfile])
   );
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadProfile();
-  };
 
   const session = getVendorSession();
   const vendor: VendorProfile = {
@@ -271,14 +262,6 @@ export default function ProfileScreen() {
     <View style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.container}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#FC7B54"
-            colors={["#FC7B54"]}
-          />
-        }
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerCard}>

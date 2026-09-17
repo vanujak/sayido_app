@@ -6,7 +6,6 @@ import {
   Image,
   LayoutAnimation,
   Platform,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -457,7 +456,6 @@ export default function PackagesScreen() {
   }>();
   const [sections, setSections] = useState<OfferingWithPackages[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [expandedOfferingIds, setExpandedOfferingIds] = useState<Record<string, boolean>>({});
 
@@ -512,7 +510,6 @@ export default function PackagesScreen() {
       );
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [vendorEmail, vendorId, vendorSession.email]);
 
@@ -548,11 +545,6 @@ export default function PackagesScreen() {
     }));
   };
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadData();
-  };
-
   if (loading) {
     return <ExploreSkeleton />;
   }
@@ -575,14 +567,6 @@ export default function PackagesScreen() {
     <View style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.container}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#FC7B54"
-            colors={["#FC7B54"]}
-          />
-        }
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>Services & Packages</Text>
