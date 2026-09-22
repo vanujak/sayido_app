@@ -39,7 +39,7 @@ export {
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  initialRouteName: "login",
+  initialRouteName: "index",
 };
 
 function RootNavigation() {
@@ -74,7 +74,7 @@ function RootNavigation() {
   return (
     <NavigationThemeProvider value={navigationTheme}>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top"]}>
-        <Stack initialRouteName="login">
+        <Stack initialRouteName="index">
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen

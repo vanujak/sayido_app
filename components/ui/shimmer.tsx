@@ -10,6 +10,7 @@ import {
   ViewStyle,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useAppTheme } from "@/context/ThemeContext";
 
 export interface ShimmerProps {
   width?: DimensionValue;
@@ -27,11 +28,14 @@ export function Shimmer({
   height = 16,
   borderRadius = 8,
   style,
-  baseColor = "#EAECEF",
-  highlightColor = "rgba(255, 255, 255, 0.75)",
+  baseColor,
+  highlightColor,
   duration = 1300,
   animatedValue: externalAnimatedValue,
 }: ShimmerProps) {
+  const { colors } = useAppTheme();
+  const effectiveBaseColor = baseColor ?? colors.shimmerBase;
+  const effectiveHighlightColor = highlightColor ?? colors.shimmerHighlight;
   const [layoutWidth, setLayoutWidth] = useState<number>(0);
   const internalAnimatedValue = useRef(new Animated.Value(0)).current;
   const animValue = externalAnimatedValue || internalAnimatedValue;
@@ -73,7 +77,7 @@ export function Shimmer({
           width,
           height,
           borderRadius,
-          backgroundColor: baseColor,
+          backgroundColor: effectiveBaseColor,
         },
         style,
       ]}
@@ -88,7 +92,7 @@ export function Shimmer({
         ]}
       >
         <LinearGradient
-          colors={["transparent", highlightColor, "transparent"]}
+          colors={["transparent", effectiveHighlightColor, "transparent"]}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
           style={StyleSheet.absoluteFill}
@@ -139,7 +143,18 @@ export function ShimmerCard({
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+  const { colors } = useAppTheme();
+  return (
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.card, borderColor: colors.border },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

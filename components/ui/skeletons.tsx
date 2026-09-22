@@ -1,17 +1,23 @@
-import React from "react";
-import { ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { useAppTheme } from "@/context/ThemeContext";
+import {
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { Shimmer, ShimmerCircle, ShimmerText } from "./shimmer";
 
 /**
  * Dashboard / Analytics Skeleton
  */
 export function DashboardSkeleton() {
+  const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const isCompact = width < 380;
   const cardWidth = Math.max((width - 40 - 12) / 2, 140);
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
@@ -19,7 +25,12 @@ export function DashboardSkeleton() {
         {/* Header */}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
-            <Shimmer width={100} height={22} borderRadius={11} style={styles.mb8} />
+            <Shimmer
+              width={100}
+              height={22}
+              borderRadius={11}
+              style={styles.mb8}
+            />
             <Shimmer width={170} height={28} borderRadius={6} />
           </View>
           <View style={styles.headerActions}>
@@ -35,7 +46,12 @@ export function DashboardSkeleton() {
               key={i}
               style={[
                 styles.metricCard,
-                { width: cardWidth, minHeight: isCompact ? 160 : 180 },
+                {
+                  width: cardWidth,
+                  minHeight: isCompact ? 160 : 180,
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
               ]}
             >
               <View style={styles.metricHeader}>
@@ -52,9 +68,23 @@ export function DashboardSkeleton() {
         {/* Insights Row */}
         <View style={styles.insightRow}>
           {[1, 2].map((i) => (
-            <View key={i} style={styles.insightCard}>
+            <View
+              key={i}
+              style={[
+                styles.insightCard,
+                {
+                  backgroundColor: colors.insightCardBg,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
               <ShimmerText width={70} height={12} style={styles.mb8} />
-              <Shimmer width="85%" height={18} borderRadius={4} style={styles.mb6} />
+              <Shimmer
+                width="85%"
+                height={18}
+                borderRadius={4}
+                style={styles.mb6}
+              />
               <ShimmerText width="60%" height={12} style={styles.mb6} />
               <Shimmer width="45%" height={14} borderRadius={4} />
             </View>
@@ -69,8 +99,9 @@ export function DashboardSkeleton() {
  * Explore / Services & Packages Skeleton
  */
 export function ExploreSkeleton() {
+  const { colors } = useAppTheme();
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
@@ -79,14 +110,30 @@ export function ExploreSkeleton() {
         <ShimmerText width={250} height={15} style={styles.mb20} />
 
         {[1, 2, 3].map((i) => (
-          <View key={i} style={styles.offeringCard}>
-            <View style={styles.offeringHeader}>
+          <View
+            key={i}
+            style={[
+              styles.serviceCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.serviceHeader}>
               <View style={styles.flex1}>
                 <View style={styles.badgeRow}>
-                  <Shimmer width={76} height={20} borderRadius={10} style={styles.mr8} />
+                  <Shimmer
+                    width={76}
+                    height={20}
+                    borderRadius={10}
+                    style={styles.mr8}
+                  />
                   <Shimmer width={88} height={20} borderRadius={10} />
                 </View>
-                <Shimmer width="70%" height={20} borderRadius={6} style={styles.mb8} />
+                <Shimmer
+                  width="70%"
+                  height={20}
+                  borderRadius={6}
+                  style={styles.mb8}
+                />
                 <ShimmerText width="85%" height={13} />
               </View>
               <ShimmerCircle size={32} />
@@ -102,8 +149,9 @@ export function ExploreSkeleton() {
  * Reservations Calendar & Details Skeleton
  */
 export function ReservationsSkeleton() {
+  const { colors, isDark } = useAppTheme();
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
@@ -112,7 +160,12 @@ export function ReservationsSkeleton() {
         <ShimmerText width={240} height={15} style={styles.mb20} />
 
         {/* Calendar Box */}
-        <View style={styles.calendarCard}>
+        <View
+          style={[
+            styles.calendarCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
           {/* Month controls */}
           <View style={styles.calendarHeader}>
             <ShimmerCircle size={30} />
@@ -138,10 +191,29 @@ export function ReservationsSkeleton() {
         </View>
 
         {/* Selected Date Card */}
-        <View style={styles.sectionCard}>
-          <Shimmer width={180} height={18} borderRadius={4} style={styles.mb14} />
+        <View
+          style={[
+            styles.sectionCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Shimmer
+            width={180}
+            height={18}
+            borderRadius={4}
+            style={styles.mb14}
+          />
           {[1, 2].map((i) => (
-            <View key={i} style={styles.reservationItemCard}>
+            <View
+              key={i}
+              style={[
+                styles.reservationItemCard,
+                {
+                  backgroundColor: isDark ? colors.cardSubtle : "#FBFBFD",
+                  borderColor: colors.border,
+                },
+              ]}
+            >
               <View style={styles.rowBetween}>
                 <Shimmer width={140} height={16} borderRadius={4} />
                 <Shimmer width={80} height={16} borderRadius={4} />
@@ -159,11 +231,18 @@ export function ReservationsSkeleton() {
  * Chat List Skeleton
  */
 export function ChatSkeleton() {
+  const { colors } = useAppTheme();
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.chatListContainer}>
         {[1, 2, 3, 4, 5, 6].map((i) => (
-          <View key={i} style={styles.chatCard}>
+          <View
+            key={i}
+            style={[
+              styles.chatCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
             <ShimmerCircle size={48} style={styles.mr12} />
             <View style={styles.chatContent}>
               <View style={styles.chatRowHeader}>
@@ -171,7 +250,12 @@ export function ChatSkeleton() {
                 <Shimmer width={50} height={12} borderRadius={4} />
               </View>
               <View style={styles.mt6}>
-                <Shimmer width={95} height={18} borderRadius={9} style={styles.mb6} />
+                <Shimmer
+                  width={95}
+                  height={18}
+                  borderRadius={9}
+                  style={styles.mb6}
+                />
                 <ShimmerText width="80%" height={13} />
               </View>
             </View>
@@ -186,25 +270,57 @@ export function ChatSkeleton() {
  * Profile Screen Skeleton
  */
 export function ProfileSkeleton() {
+  const { colors } = useAppTheme();
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
         {/* Avatar & Identity Card */}
-        <View style={styles.profileHeaderCard}>
+        <View
+          style={[
+            styles.profileHeaderCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
           <ShimmerCircle size={96} style={styles.mb14} />
-          <Shimmer width={180} height={22} borderRadius={6} style={styles.mb8} />
-          <Shimmer width={140} height={16} borderRadius={4} style={styles.mb6} />
+          <Shimmer
+            width={180}
+            height={22}
+            borderRadius={6}
+            style={styles.mb8}
+          />
+          <Shimmer
+            width={140}
+            height={16}
+            borderRadius={4}
+            style={styles.mb6}
+          />
           <ShimmerText width={190} height={14} />
         </View>
 
         {/* Contact Section */}
-        <View style={styles.sectionCard}>
-          <Shimmer width={90} height={18} borderRadius={4} style={styles.mb14} />
+        <View
+          style={[
+            styles.sectionCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Shimmer
+            width={90}
+            height={18}
+            borderRadius={4}
+            style={styles.mb14}
+          />
           {[1, 2, 3].map((i) => (
-            <View key={i} style={styles.infoRow}>
+            <View
+              key={i}
+              style={[
+                styles.infoRow,
+                { borderBottomColor: colors.borderLight },
+              ]}
+            >
               <Shimmer width={70} height={14} borderRadius={4} />
               <Shimmer width={130} height={14} borderRadius={4} />
             </View>
@@ -212,9 +328,21 @@ export function ProfileSkeleton() {
         </View>
 
         {/* Business Section */}
-        <View style={styles.sectionCard}>
-          <Shimmer width={90} height={18} borderRadius={4} style={styles.mb14} />
-          <View style={styles.infoRow}>
+        <View
+          style={[
+            styles.sectionCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Shimmer
+            width={90}
+            height={18}
+            borderRadius={4}
+            style={styles.mb14}
+          />
+          <View
+            style={[styles.infoRow, { borderBottomColor: colors.borderLight }]}
+          >
             <Shimmer width={60} height={14} borderRadius={4} />
             <View style={styles.flex1}>
               <ShimmerText width="100%" height={13} style={styles.mb6} />
@@ -225,7 +353,12 @@ export function ProfileSkeleton() {
         </View>
 
         {/* Logout Button */}
-        <Shimmer width="100%" height={48} borderRadius={14} style={styles.mt12} />
+        <Shimmer
+          width="100%"
+          height={48}
+          borderRadius={14}
+          style={styles.mt12}
+        />
       </ScrollView>
     </View>
   );
@@ -235,10 +368,17 @@ export function ProfileSkeleton() {
  * Notification List Skeleton (for Notifications Modal)
  */
 export function NotificationListSkeleton() {
+  const { colors } = useAppTheme();
   return (
     <View style={styles.notificationList}>
       {[1, 2, 3, 4].map((i) => (
-        <View key={i} style={styles.notificationCard}>
+        <View
+          key={i}
+          style={[
+            styles.notificationCard,
+            { borderBottomColor: colors.borderLight },
+          ]}
+        >
           <ShimmerCircle size={36} style={styles.mr12} />
           <View style={styles.flex1}>
             <View style={styles.rowBetween}>
@@ -248,7 +388,12 @@ export function NotificationListSkeleton() {
             <ShimmerText width="90%" height={12} style={styles.mt6} />
             <ShimmerText width="60%" height={12} style={styles.mt4} />
             <View style={styles.notificationActions}>
-              <Shimmer width={85} height={26} borderRadius={13} style={styles.mr8} />
+              <Shimmer
+                width={85}
+                height={26}
+                borderRadius={13}
+                style={styles.mr8}
+              />
               <Shimmer width={85} height={26} borderRadius={13} />
             </View>
           </View>
@@ -371,7 +516,7 @@ const styles = StyleSheet.create({
   },
 
   // Explore styles
-  offeringCard: {
+  serviceCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 16,
@@ -384,7 +529,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  offeringHeader: {
+  serviceHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

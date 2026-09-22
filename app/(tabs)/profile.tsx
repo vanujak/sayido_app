@@ -125,8 +125,8 @@ export default function ProfileScreen() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             query: `
-              query GetVendorById($id: ID!) {
-                vendor(id: $id) {
+              query GetVendorProfileById($id: String!) {
+                findVendorById(id: $id) {
                   id
                   email
                   fname
@@ -144,9 +144,11 @@ export default function ProfileScreen() {
           }),
         });
 
-        const json = (await res.json()) as { data?: { vendor?: VendorApiData } };
-        if (json.data?.vendor) {
-          const v = json.data.vendor;
+        const json = (await res.json()) as {
+          data?: { findVendorById?: VendorApiData };
+        };
+        if (json.data?.findVendorById) {
+          const v = json.data.findVendorById;
           setProfile({
             fname: v.fname || "",
             lname: v.lname || "",
@@ -170,58 +172,56 @@ export default function ProfileScreen() {
       }
 
       // 2. Fallback: fetch all vendors and find by email
-      if (vendorEmail) {
-        const res = await fetch(graphQlUrl, {
-          method: "POST",
-          credentials: apiCredentials,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: `
-              query GetAllVendors {
-                vendors {
-                  id
-                  email
-                  fname
-                  lname
-                  busname
-                  phone
-                  city
-                  location
-                  about
-                  profile_pic_url
-                }
+      const targetEmail = (vendorEmail || "test@gmail.com").trim().toLowerCase();
+      const allRes = await fetch(graphQlUrl, {
+        method: "POST",
+        credentials: apiCredentials,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: `
+            query GetAllVendorsForProfile {
+              findAllVendors {
+                id
+                email
+                fname
+                lname
+                busname
+                phone
+                city
+                location
+                about
+                profile_pic_url
               }
-            `,
-          }),
+            }
+          `,
+        }),
+      });
+      const allJson = (await allRes.json()) as {
+        data?: { findAllVendors?: Array<VendorApiData> };
+      };
+      const list = allJson.data?.findAllVendors || [];
+      const matched =
+        list.find((item) => item.email && item.email.toLowerCase() === targetEmail) ||
+        list[0];
+      if (matched) {
+        setProfile({
+          fname: matched.fname || "",
+          lname: matched.lname || "",
+          email: matched.email || "",
+          busname: matched.busname || "",
+          phone: matched.phone || "",
+          city: matched.city || "",
+          location: matched.location || "",
+          about: matched.about || "",
+          profilePicUrl: matched.profile_pic_url || "",
         });
-        const json = (await res.json()) as {
-          data?: { vendors?: Array<VendorApiData> };
-        };
-        const list = json.data?.vendors || [];
-        const targetEmail = (vendorEmail || "test@gmail.com").trim().toLowerCase();
-        const matched = list.find(
-          (item) => item.email?.toLowerCase() === targetEmail
-        ) || list[0];
-        if (matched) {
-          setProfile({
-            fname: matched.fname || "",
-            lname: matched.lname || "",
-            email: matched.email || "",
-            busname: matched.busname || "",
-            phone: matched.phone || "",
-            city: matched.city || "",
-            location: matched.location || "",
-            about: matched.about || "",
-            profilePicUrl: matched.profile_pic_url || "",
-          });
-          setImageError(false);
-          setVendorSession({
-            vendorId: matched.id,
-            email: matched.email,
-            name: `${matched.fname || ""} ${matched.lname || ""}`.trim(),
-            profilePicUrl: matched.profile_pic_url || "",
-          });
-        }
+        setImageError(false);
+        setVendorSession({
+          vendorId: matched.id,
+          email: matched.email,
+          name: `${matched.fname || ""} ${matched.lname || ""}`.trim(),
+          profilePicUrl: matched.profile_pic_url || "",
+        });
       }
     } catch (err) {
       console.error("Failed to load vendor profile:", err);

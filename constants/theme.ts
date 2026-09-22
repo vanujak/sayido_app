@@ -24,6 +24,8 @@ export const Colors = {
     insightCardBg: "#1C2A43",
     tint: "#FC7B54",
     icon: "#687076",
+    shimmerBase: "#E8EDF5",
+    shimmerHighlight: "rgba(255, 255, 255, 0.75)",
   },
   dark: {
     background: "#0F172A",
@@ -48,6 +50,8 @@ export const Colors = {
     insightCardBg: "#1A2333",
     tint: "#FC7B54",
     icon: "#94A3B8",
+    shimmerBase: "#27354A",
+    shimmerHighlight: "rgba(255, 255, 255, 0.12)",
   },
 } as const;
 

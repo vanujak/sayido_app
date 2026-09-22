@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { ReservationsSkeleton } from "@/components/ui/skeletons";
-import { useGlobalSearchParams } from "expo-router";
 import { useAppTheme } from "@/context/ThemeContext";
+import { apiCredentials, graphQlUrl } from "@/lib/api-config";
+import { formatCoupleName } from "@/lib/formatCoupleName";
+import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { useGlobalSearchParams } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,9 +18,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
-import { apiCredentials, graphQlUrl } from "@/lib/api-config";
-import { formatCoupleName } from "@/lib/formatCoupleName";
 
 type Reservation = {
   id: string;
@@ -29,7 +29,7 @@ type Reservation = {
   visitorEmail: string;
   visitorPhone: string;
   packageName: string;
-  offeringName: string;
+  serviceName: string;
   requiresReservation: boolean;
   requiresApproval: boolean;
 };
@@ -51,7 +51,7 @@ type ApprovalRequest = {
   visitorEmail: string;
   visitorPhone: string;
   packageName: string;
-  offeringName: string;
+  serviceName: string;
 };
 
 type ReservationMap = Record<string, Reservation[]>;
@@ -97,7 +97,7 @@ const formatDateString = (value: string) => {
 
 const graphQlRequest = async <TData extends unknown>(
   query: string,
-  variables: Record<string, unknown>
+  variables: Record<string, unknown>,
 ): Promise<TData> => {
   if (!graphQlUrl) {
     throw new Error("Missing EXPO_PUBLIC_GRAPHQL_URL");
@@ -150,7 +150,9 @@ const readVendorIdFromCookie = () => {
   if (jwtParts.length < 2) return "";
 
   try {
-    const payload = JSON.parse(atob(jwtParts[1].replace(/-/g, "+").replace(/_/g, "/"))) as {
+    const payload = JSON.parse(
+      atob(jwtParts[1].replace(/-/g, "+").replace(/_/g, "/")),
+    ) as {
       sub?: string;
     };
     return toText(payload.sub);
@@ -173,13 +175,15 @@ const loadVendorIdByEmail = async (email: string): Promise<string> => {
         }
       }
     `,
-    { email: email.trim() }
+    { email: email.trim() },
   );
 
   return toText(data.findVendorByEmail?.id);
 };
 
-const loadVendorReservations = async (vendorId: string): Promise<Reservation[]> => {
+const loadVendorReservations = async (
+  vendorId: string,
+): Promise<Reservation[]> => {
   const data = await graphQlRequest<{
     vendorPayments?: Array<Record<string, unknown>>;
   }>(
@@ -202,22 +206,24 @@ const loadVendorReservations = async (vendorId: string): Promise<Reservation[]> 
             name
             requiresReservation
             requiresApproval
-            offering {
+            service {
               name
             }
           }
         }
       }
     `,
-    { vendorId }
+    { vendorId },
   );
 
   const rows = Array.isArray(data.vendorPayments) ? data.vendorPayments : [];
   return rows
     .map((item) => {
-      const visitor = (item.visitor as Record<string, unknown> | undefined) || {};
+      const visitor =
+        (item.visitor as Record<string, unknown> | undefined) || {};
       const pkg = (item.package as Record<string, unknown> | undefined) || {};
-      const offering = (pkg.offering as Record<string, unknown> | undefined) || {};
+      const service =
+        (pkg.service as Record<string, unknown> | undefined) || {};
 
       const visitorName = formatCoupleName(
         {
@@ -225,7 +231,7 @@ const loadVendorReservations = async (vendorId: string): Promise<Reservation[]> 
           visitor_lname: toText(visitor.visitor_lname),
           partner_fname: toText(visitor.partner_fname),
         },
-        "Guest"
+        "Guest",
       );
 
       return {
@@ -238,15 +244,26 @@ const loadVendorReservations = async (vendorId: string): Promise<Reservation[]> 
         visitorEmail: toText(visitor.email),
         visitorPhone: toText(visitor.phone),
         packageName: toText(pkg.name, "Package"),
-        offeringName: toText(offering.name, "Offering"),
-        requiresReservation: Boolean(pkg.requiresReservation ?? pkg.requires_reservation),
-        requiresApproval: Boolean(pkg.requiresApproval ?? pkg.requires_approval),
+        serviceName: toText(service.name, "Service"),
+        requiresReservation: Boolean(
+          pkg.requiresReservation ?? pkg.requires_reservation,
+        ),
+        requiresApproval: Boolean(
+          pkg.requiresApproval ?? pkg.requires_approval,
+        ),
       };
     })
-    .filter((reservation) => !!reservation.id && !!reservation.bookingDate);
+    .filter(
+      (reservation) =>
+        !!reservation.id &&
+        !!reservation.bookingDate &&
+        reservation.status.trim().toLowerCase() === "completed",
+    );
 };
 
-const loadVendorApprovalRequests = async (vendorId: string): Promise<ApprovalRequest[]> => {
+const loadVendorApprovalRequests = async (
+  vendorId: string,
+): Promise<ApprovalRequest[]> => {
   const data = await graphQlRequest<{
     getVendorApprovalRequests?: Array<Record<string, unknown>>;
   }>(
@@ -272,21 +289,23 @@ const loadVendorApprovalRequests = async (vendorId: string): Promise<ApprovalReq
           }
           package {
             name
-            offering {
+            service {
               name
             }
           }
         }
       }
     `,
-    { vendorId }
+    { vendorId },
   );
 
-  const rows = Array.isArray(data.getVendorApprovalRequests) ? data.getVendorApprovalRequests : [];
+  const rows = Array.isArray(data.getVendorApprovalRequests)
+    ? data.getVendorApprovalRequests
+    : [];
   return rows.map((item) => {
     const visitor = (item.visitor as Record<string, unknown> | undefined) || {};
     const pkg = (item.package as Record<string, unknown> | undefined) || {};
-    const offering = (pkg.offering as Record<string, unknown> | undefined) || {};
+    const service = (pkg.service as Record<string, unknown> | undefined) || {};
 
     const visitorName = formatCoupleName(
       {
@@ -294,7 +313,7 @@ const loadVendorApprovalRequests = async (vendorId: string): Promise<ApprovalReq
         visitor_lname: toText(visitor.visitor_lname),
         partner_fname: toText(visitor.partner_fname),
       },
-      "Couple"
+      "Couple",
     );
 
     return {
@@ -312,7 +331,7 @@ const loadVendorApprovalRequests = async (vendorId: string): Promise<ApprovalReq
       visitorEmail: toText(visitor.email),
       visitorPhone: toText(visitor.phone),
       packageName: toText(pkg.name, "Package"),
-      offeringName: toText(offering.name, "Offering"),
+      serviceName: toText(service.name, "Service"),
     };
   });
 };
@@ -321,7 +340,7 @@ const respondApprovalRequest = async (
   requestId: string,
   vendorId: string,
   action: "approve" | "reject",
-  vendorMessage?: string
+  vendorMessage?: string,
 ) => {
   return graphQlRequest(
     `
@@ -340,7 +359,7 @@ const respondApprovalRequest = async (
         action,
         vendorMessage: vendorMessage?.trim() || undefined,
       },
-    }
+    },
   );
 };
 
@@ -358,7 +377,13 @@ const buildMonthCells = (month: Date, reservationsByDate: ReservationMap) => {
 
   const cells: Array<
     | { type: "empty"; key: string }
-    | { type: "day"; key: string; day: number; hasReservations: boolean; count: number }
+    | {
+        type: "day";
+        key: string;
+        day: number;
+        hasReservations: boolean;
+        count: number;
+      }
   > = [];
 
   for (let i = 0; i < firstWeekDay; i += 1) {
@@ -397,16 +422,20 @@ export default function ReservationsScreen() {
   }>();
 
   const [activeTab, setActiveTab] = useState<"calendar" | "approvals">(
-    params.tab === "approvals" ? "approvals" : "calendar"
+    params.tab === "approvals" ? "approvals" : "calendar",
   );
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
+  const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [monthCursor, setMonthCursor] = useState(
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   );
-  const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date()));
+  const [selectedDateKey, setSelectedDateKey] = useState(() =>
+    dateKey(new Date()),
+  );
 
   const [activeApprovalModal, setActiveApprovalModal] = useState<{
     request: ApprovalRequest;
@@ -438,11 +467,16 @@ export default function ReservationsScreen() {
     setErrorMessage("");
     try {
       const resolvedVendorId =
-        vendorId || (await loadVendorIdByEmail(vendorEmail)) || readVendorIdFromCookie();
+        vendorId ||
+        (await loadVendorIdByEmail(vendorEmail)) ||
+        readVendorIdFromCookie();
       if (!resolvedVendorId) {
         throw new Error("Could not resolve vendor id for reservations.");
       }
-      setVendorSession({ vendorId: resolvedVendorId, email: vendorEmail || vendorSession.email });
+      setVendorSession({
+        vendorId: resolvedVendorId,
+        email: vendorEmail || vendorSession.email,
+      });
 
       const [reservationsResult, approvalsResult] = await Promise.all([
         loadVendorReservations(resolvedVendorId),
@@ -454,7 +488,9 @@ export default function ReservationsScreen() {
       setReservations([]);
       setApprovalRequests([]);
       setErrorMessage(
-        error instanceof Error ? error.message : "Unable to load reservations right now."
+        error instanceof Error
+          ? error.message
+          : "Unable to load reservations right now.",
       );
     } finally {
       setLoading(false);
@@ -473,19 +509,24 @@ export default function ReservationsScreen() {
         activeApprovalModal.request.id,
         resolvedVendorId,
         activeApprovalModal.action,
-        responseNote
+        responseNote,
       );
       Alert.alert(
-        activeApprovalModal.action === "approve" ? "Request Approved" : "Request Declined",
+        activeApprovalModal.action === "approve"
+          ? "Request Approved"
+          : "Request Declined",
         activeApprovalModal.action === "approve"
           ? "The couple has been notified and has 24 hours to pay advance."
-          : "The couple has been notified that you declined the request."
+          : "The couple has been notified that you declined the request.",
       );
       setActiveApprovalModal(null);
       setResponseNote("");
       loadData();
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "Failed to respond");
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "Failed to respond",
+      );
     } finally {
       setActionLoading(false);
     }
@@ -510,7 +551,7 @@ export default function ReservationsScreen() {
 
   const monthCells = useMemo(
     () => buildMonthCells(monthCursor, reservationsByDate),
-    [monthCursor, reservationsByDate]
+    [monthCursor, reservationsByDate],
   );
 
   const monthWeeks = useMemo(() => {
@@ -521,10 +562,15 @@ export default function ReservationsScreen() {
     return weeks;
   }, [monthCells]);
 
-  const selectedReservations = selectedDateKey ? reservationsByDate[selectedDateKey] || [] : [];
+  const selectedReservations = selectedDateKey
+    ? reservationsByDate[selectedDateKey] || []
+    : [];
+  const todayKey = dateKey(new Date());
 
   const pendingApprovalsCount = useMemo(() => {
-    return approvalRequests.filter((r) => (r.status || "").toLowerCase() === "pending").length;
+    return approvalRequests.filter(
+      (r) => (r.status || "").toLowerCase() === "pending",
+    ).length;
   }, [approvalRequests]);
 
   const upcomingBookings = useMemo(() => {
@@ -533,6 +579,7 @@ export default function ReservationsScreen() {
 
     return [...reservations]
       .filter((b) => {
+        if ((b.status || "").toLowerCase() === "failed") return false;
         const d = parseDate(b.bookingDate);
         return d && d >= today;
       })
@@ -544,7 +591,10 @@ export default function ReservationsScreen() {
   }, [reservations]);
 
   const moveMonth = (step: number) => {
-    setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + step, 1));
+    setMonthCursor(
+      (current) =>
+        new Date(current.getFullYear(), current.getMonth() + step, 1),
+    );
   };
 
   if (loading) {
@@ -554,10 +604,20 @@ export default function ReservationsScreen() {
   if (errorMessage) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View style={[styles.centerState, { backgroundColor: colors.background }]}>
-          <Text style={[styles.errorTitle, { color: colors.text }]}>Could not load reservations</Text>
-          <Text style={[styles.errorText, { color: colors.textSecondary }]}>{errorMessage}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadData} activeOpacity={0.8}>
+        <View
+          style={[styles.centerState, { backgroundColor: colors.background }]}
+        >
+          <Text style={[styles.errorTitle, { color: colors.text }]}>
+            Could not load reservations
+          </Text>
+          <Text style={[styles.errorText, { color: colors.textSecondary }]}>
+            {errorMessage}
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={loadData}
+            activeOpacity={0.8}
+          >
             <Text style={styles.retryText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -578,11 +638,19 @@ export default function ReservationsScreen() {
             : "Review package booking approval requests from couples"}
         </Text>
 
-        <View style={[styles.segmentContainer, { backgroundColor: isDark ? colors.cardSubtle : "#E5E7EB" }]}>
+        <View
+          style={[
+            styles.segmentContainer,
+            { backgroundColor: isDark ? colors.cardSubtle : "#E5E7EB" },
+          ]}
+        >
           <TouchableOpacity
             style={[
               styles.segmentBtn,
-              activeTab === "calendar" && [styles.segmentBtnActive, { backgroundColor: isDark ? colors.card : "#FFFFFF" }],
+              activeTab === "calendar" && [
+                styles.segmentBtnActive,
+                { backgroundColor: isDark ? colors.card : "#FFFFFF" },
+              ],
             ]}
             onPress={() => setActiveTab("calendar")}
             activeOpacity={0.8}
@@ -591,7 +659,10 @@ export default function ReservationsScreen() {
               style={[
                 styles.segmentBtnText,
                 { color: colors.textSecondary },
-                activeTab === "calendar" && [styles.segmentBtnTextActive, { color: colors.text }],
+                activeTab === "calendar" && [
+                  styles.segmentBtnTextActive,
+                  { color: colors.text },
+                ],
               ]}
             >
               Calendar & Bookings
@@ -600,7 +671,10 @@ export default function ReservationsScreen() {
           <TouchableOpacity
             style={[
               styles.segmentBtn,
-              activeTab === "approvals" && [styles.segmentBtnActive, { backgroundColor: isDark ? colors.card : "#FFFFFF" }],
+              activeTab === "approvals" && [
+                styles.segmentBtnActive,
+                { backgroundColor: isDark ? colors.card : "#FFFFFF" },
+              ],
             ]}
             onPress={() => setActiveTab("approvals")}
             activeOpacity={0.8}
@@ -609,36 +683,67 @@ export default function ReservationsScreen() {
               style={[
                 styles.segmentBtnText,
                 { color: colors.textSecondary },
-                activeTab === "approvals" && [styles.segmentBtnTextActive, { color: colors.text }],
+                activeTab === "approvals" && [
+                  styles.segmentBtnTextActive,
+                  { color: colors.text },
+                ],
               ]}
             >
-              Approval Requests {pendingApprovalsCount > 0 ? `(${pendingApprovalsCount})` : ""}
+              Approval Requests{" "}
+              {pendingApprovalsCount > 0 ? `(${pendingApprovalsCount})` : ""}
             </Text>
           </TouchableOpacity>
         </View>
 
         {activeTab === "calendar" ? (
           <>
-            <View style={[styles.calendarCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View
+              style={[
+                styles.calendarCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
               <View style={styles.calendarHeader}>
                 <TouchableOpacity
-                  style={[styles.monthButton, { backgroundColor: isDark ? colors.cardSubtle : "#F3F4F6" }]}
+                  style={[
+                    styles.monthButton,
+                    { backgroundColor: isDark ? colors.cardSubtle : "#F3F4F6" },
+                  ]}
                   onPress={() => moveMonth(-1)}
                 >
-                  <Text style={[styles.monthButtonText, { color: colors.text }]}>{"<"}</Text>
+                  <Text
+                    style={[styles.monthButtonText, { color: colors.text }]}
+                  >
+                    {"<"}
+                  </Text>
                 </TouchableOpacity>
-                <Text style={[styles.monthTitle, { color: colors.text }]}>{monthLabel(monthCursor)}</Text>
+                <Text style={[styles.monthTitle, { color: colors.text }]}>
+                  {monthLabel(monthCursor)}
+                </Text>
                 <TouchableOpacity
-                  style={[styles.monthButton, { backgroundColor: isDark ? colors.cardSubtle : "#F3F4F6" }]}
+                  style={[
+                    styles.monthButton,
+                    { backgroundColor: isDark ? colors.cardSubtle : "#F3F4F6" },
+                  ]}
                   onPress={() => moveMonth(1)}
                 >
-                  <Text style={[styles.monthButtonText, { color: colors.text }]}>{">"}</Text>
+                  <Text
+                    style={[styles.monthButtonText, { color: colors.text }]}
+                  >
+                    {">"}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
               <View style={styles.weekdayRow}>
                 {weekdayLabels.map((label) => (
-                  <Text key={label} style={[styles.weekdayText, { color: colors.textSecondary }]}>
+                  <Text
+                    key={label}
+                    style={[
+                      styles.weekdayText,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
                     {label}
                   </Text>
                 ))}
@@ -653,14 +758,20 @@ export default function ReservationsScreen() {
                       }
 
                       const selected = selectedDateKey === cell.key;
+                      const isToday = todayKey === cell.key;
                       return (
                         <TouchableOpacity
                           key={cell.key}
                           style={[
                             styles.dayCell,
+                            isToday && styles.dayCellToday,
                             selected && [
                               styles.dayCellSelected,
-                              { backgroundColor: isDark ? "rgba(252, 123, 84, 0.22)" : "#FFE8E1" },
+                              {
+                                backgroundColor: isDark
+                                  ? "rgba(252, 123, 84, 0.22)"
+                                  : "#FFE8E1",
+                              },
                             ],
                           ]}
                           onPress={() => setSelectedDateKey(cell.key)}
@@ -677,7 +788,9 @@ export default function ReservationsScreen() {
                           </Text>
                           {cell.hasReservations && (
                             <View style={styles.dayCountBadge}>
-                              <Text style={styles.dayCountText}>{cell.count}</Text>
+                              <Text style={styles.dayCountText}>
+                                {cell.count}
+                              </Text>
                             </View>
                           )}
                         </TouchableOpacity>
@@ -689,129 +802,339 @@ export default function ReservationsScreen() {
             </View>
 
             {/* Selected Date Bookings Section */}
-            <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View
+              style={[
+                styles.sectionCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
               <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                {selectedDateKey ? `Bookings for ${formatDateString(selectedDateKey)}` : "Selected Date"}
+                {selectedDateKey
+                  ? `Bookings for ${formatDateString(selectedDateKey)}`
+                  : "Selected Date"}
               </Text>
               {selectedReservations.length === 0 ? (
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No bookings on this date.</Text>
+                <Text
+                  style={[styles.emptyText, { color: colors.textSecondary }]}
+                >
+                  No bookings on this date.
+                </Text>
               ) : (
                 selectedReservations.map((reservation) => (
-                  <View key={reservation.id} style={[styles.reservationCard, { borderTopColor: isDark ? colors.border : "#F3F4F6" }]}>
+                  <View
+                    key={reservation.id}
+                    style={[
+                      styles.reservationCard,
+                      { borderTopColor: isDark ? colors.border : "#F3F4F6" },
+                    ]}
+                  >
                     <View style={styles.rowBetween}>
-                      <Text style={[styles.packageName, { color: colors.text }]}>{reservation.packageName}</Text>
-                      <Text style={[styles.amount, { color: colors.text }]}>{formatAmount(reservation.amount)}</Text>
+                      <Text
+                        style={[styles.packageName, { color: colors.text }]}
+                      >
+                        {reservation.packageName}
+                      </Text>
+                      <Text style={[styles.amount, { color: colors.text }]}>
+                        {formatAmount(reservation.amount)}
+                      </Text>
                     </View>
                     <View style={styles.packageBadgeRow}>
                       {reservation.requiresApproval ? (
-                        <View style={[styles.miniBadge, styles.miniBadgeApproval, isDark && { backgroundColor: "rgba(59, 130, 246, 0.15)", borderColor: "rgba(59, 130, 246, 0.3)" }]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextApproval, isDark && { color: "#60A5FA" }]}>
+                        <View
+                          style={[
+                            styles.miniBadge,
+                            styles.miniBadgeApproval,
+                            isDark && {
+                              backgroundColor: "rgba(59, 130, 246, 0.15)",
+                              borderColor: "rgba(59, 130, 246, 0.3)",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.miniBadgeText,
+                              styles.miniBadgeTextApproval,
+                              isDark && { color: "#60A5FA" },
+                            ]}
+                          >
                             Requires Approval
                           </Text>
                         </View>
                       ) : reservation.requiresReservation ? (
-                        <View style={[styles.miniBadge, styles.miniBadgeReservation, isDark && { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)" }]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextReservation, isDark && { color: "#FBBF24" }]}>
+                        <View
+                          style={[
+                            styles.miniBadge,
+                            styles.miniBadgeReservation,
+                            isDark && {
+                              backgroundColor: "rgba(245, 158, 11, 0.15)",
+                              borderColor: "rgba(245, 158, 11, 0.3)",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.miniBadgeText,
+                              styles.miniBadgeTextReservation,
+                              isDark && { color: "#FBBF24" },
+                            ]}
+                          >
                             Requires Reservation
                           </Text>
                         </View>
                       ) : (
-                        <View style={[styles.miniBadge, styles.miniBadgeNormal, isDark && { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)" }]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextNormal, isDark && { color: "#34D399" }]}>
+                        <View
+                          style={[
+                            styles.miniBadge,
+                            styles.miniBadgeNormal,
+                            isDark && {
+                              backgroundColor: "rgba(16, 185, 129, 0.15)",
+                              borderColor: "rgba(16, 185, 129, 0.3)",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.miniBadgeText,
+                              styles.miniBadgeTextNormal,
+                              isDark && { color: "#34D399" },
+                            ]}
+                          >
                             Normal Package
                           </Text>
                         </View>
                       )}
-                      <Text style={[styles.statusBadgeSmall, isDark && { backgroundColor: colors.cardSubtle, color: colors.textSecondary }]}>
+                      <Text
+                        style={[
+                          styles.statusBadgeSmall,
+                          isDark && {
+                            backgroundColor: colors.cardSubtle,
+                            color: colors.textSecondary,
+                          },
+                        ]}
+                      >
                         {reservation.status.toUpperCase()}
                       </Text>
                     </View>
-                    <Text style={[styles.metaOffering, { color: colors.textSecondary }]}>{reservation.offeringName}</Text>
+                    <Text
+                      style={[
+                        styles.metaService,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      {reservation.serviceName}
+                    </Text>
                     <View style={styles.coupleRow}>
-                      <Text style={[styles.coupleLabel, { color: colors.textSecondary }]}>Couple:</Text>
-                      <Text style={[styles.coupleValue, { color: colors.text }]}>
+                      <Text
+                        style={[
+                          styles.coupleLabel,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        Couple:
+                      </Text>
+                      <Text
+                        style={[styles.coupleValue, { color: colors.text }]}
+                      >
                         {reservation.visitorName}{" "}
-                        {reservation.visitorEmail ? `(${reservation.visitorEmail})` : ""}
+                        {reservation.visitorEmail
+                          ? `(${reservation.visitorEmail})`
+                          : ""}
                       </Text>
                     </View>
                     {reservation.visitorPhone ? (
-                      <Text style={[styles.phoneMeta, { color: colors.textSecondary }]}>📞 {reservation.visitorPhone}</Text>
+                      <Text
+                        style={[
+                          styles.phoneMeta,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        📞 {reservation.visitorPhone}
+                      </Text>
                     ) : null}
                   </View>
                 ))
               )}
             </View>
 
-            {/* Upcoming Bookings Section */}
-            <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.rowBetween}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Upcoming Bookings</Text>
-                <View style={styles.countBadge}>
-                  <Text style={styles.countBadgeText}>{upcomingBookings.length}</Text>
+            {selectedDateKey === todayKey && (
+              <View
+                style={[
+                  styles.sectionCard,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <View style={styles.rowBetween}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                    Upcoming Bookings
+                  </Text>
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>
+                      {upcomingBookings.length}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
-                Chronological list of all upcoming booked packages across all services
-              </Text>
+                <Text
+                  style={[styles.sectionSub, { color: colors.textSecondary }]}
+                >
+                  Chronological list of all upcoming booked packages across all
+                  services
+                </Text>
 
-              {upcomingBookings.length === 0 ? (
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No upcoming bookings scheduled yet.</Text>
-              ) : (
-                upcomingBookings.map((booking) => (
-                  <View key={`upcoming-${booking.id}`} style={[styles.reservationCard, { borderTopColor: isDark ? colors.border : "#F3F4F6" }]}>
-                    <View style={styles.rowBetween}>
-                      <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={[styles.packageName, { color: colors.text }]}>{booking.packageName}</Text>
-                        <Text style={[styles.metaOffering, { color: colors.textSecondary }]}>{booking.offeringName}</Text>
+                {upcomingBookings.length === 0 ? (
+                  <Text
+                    style={[styles.emptyText, { color: colors.textSecondary }]}
+                  >
+                    No upcoming bookings scheduled yet.
+                  </Text>
+                ) : (
+                  upcomingBookings.map((booking) => (
+                    <View
+                      key={`upcoming-${booking.id}`}
+                      style={[
+                        styles.reservationCard,
+                        { borderTopColor: isDark ? colors.border : "#F3F4F6" },
+                      ]}
+                    >
+                      <View style={styles.rowBetween}>
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                          <Text
+                            style={[styles.packageName, { color: colors.text }]}
+                          >
+                            {booking.packageName}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.metaService,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            {booking.serviceName}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text style={[styles.amount, { color: colors.text }]}>
+                            {formatAmount(booking.amount)}
+                          </Text>
+                          <Text style={styles.upcomingDateText}>
+                            📅 {formatDateString(booking.bookingDate)}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={{ alignItems: "flex-end" }}>
-                        <Text style={[styles.amount, { color: colors.text }]}>{formatAmount(booking.amount)}</Text>
-                        <Text style={styles.upcomingDateText}>
-                          📅 {formatDateString(booking.bookingDate)}
+                      <View style={styles.packageBadgeRow}>
+                        {booking.requiresApproval ? (
+                          <View
+                            style={[
+                              styles.miniBadge,
+                              styles.miniBadgeApproval,
+                              isDark && {
+                                backgroundColor: "rgba(59, 130, 246, 0.15)",
+                                borderColor: "rgba(59, 130, 246, 0.3)",
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.miniBadgeText,
+                                styles.miniBadgeTextApproval,
+                                isDark && { color: "#60A5FA" },
+                              ]}
+                            >
+                              Requires Approval
+                            </Text>
+                          </View>
+                        ) : booking.requiresReservation ? (
+                          <View
+                            style={[
+                              styles.miniBadge,
+                              styles.miniBadgeReservation,
+                              isDark && {
+                                backgroundColor: "rgba(245, 158, 11, 0.15)",
+                                borderColor: "rgba(245, 158, 11, 0.3)",
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.miniBadgeText,
+                                styles.miniBadgeTextReservation,
+                                isDark && { color: "#FBBF24" },
+                              ]}
+                            >
+                              Requires Reservation
+                            </Text>
+                          </View>
+                        ) : (
+                          <View
+                            style={[
+                              styles.miniBadge,
+                              styles.miniBadgeNormal,
+                              isDark && {
+                                backgroundColor: "rgba(16, 185, 129, 0.15)",
+                                borderColor: "rgba(16, 185, 129, 0.3)",
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.miniBadgeText,
+                                styles.miniBadgeTextNormal,
+                                isDark && { color: "#34D399" },
+                              ]}
+                            >
+                              Normal Package
+                            </Text>
+                          </View>
+                        )}
+                        <Text
+                          style={[
+                            styles.statusBadgeSmall,
+                            isDark && {
+                              backgroundColor: colors.cardSubtle,
+                              color: colors.textSecondary,
+                            },
+                          ]}
+                        >
+                          {booking.status.toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.coupleRow}>
+                        <Text
+                          style={[
+                            styles.coupleLabel,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
+                          Couple:
+                        </Text>
+                        <Text
+                          style={[styles.coupleValue, { color: colors.text }]}
+                        >
+                          {booking.visitorName}{" "}
+                          {booking.visitorEmail
+                            ? `(${booking.visitorEmail})`
+                            : ""}
                         </Text>
                       </View>
                     </View>
-                    <View style={styles.packageBadgeRow}>
-                      {booking.requiresApproval ? (
-                        <View style={[styles.miniBadge, styles.miniBadgeApproval, isDark && { backgroundColor: "rgba(59, 130, 246, 0.15)", borderColor: "rgba(59, 130, 246, 0.3)" }]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextApproval, isDark && { color: "#60A5FA" }]}>
-                            Requires Approval
-                          </Text>
-                        </View>
-                      ) : booking.requiresReservation ? (
-                        <View style={[styles.miniBadge, styles.miniBadgeReservation, isDark && { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)" }]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextReservation, isDark && { color: "#FBBF24" }]}>
-                            Requires Reservation
-                          </Text>
-                        </View>
-                      ) : (
-                        <View style={[styles.miniBadge, styles.miniBadgeNormal, isDark && { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)" }]}>
-                          <Text style={[styles.miniBadgeText, styles.miniBadgeTextNormal, isDark && { color: "#34D399" }]}>
-                            Normal Package
-                          </Text>
-                        </View>
-                      )}
-                      <Text style={[styles.statusBadgeSmall, isDark && { backgroundColor: colors.cardSubtle, color: colors.textSecondary }]}>
-                        {booking.status.toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={styles.coupleRow}>
-                      <Text style={[styles.coupleLabel, { color: colors.textSecondary }]}>Couple:</Text>
-                      <Text style={[styles.coupleValue, { color: colors.text }]}>
-                        {booking.visitorName}{" "}
-                        {booking.visitorEmail ? `(${booking.visitorEmail})` : ""}
-                      </Text>
-                    </View>
-                  </View>
-                ))
-              )}
-            </View>
+                  ))
+                )}
+              </View>
+            )}
           </>
         ) : (
           <View style={styles.approvalsContainer}>
             {approvalRequests.length === 0 ? (
-              <View style={[styles.emptyApprovalsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No approval requests found.</Text>
+              <View
+                style={[
+                  styles.emptyApprovalsCard,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <Text
+                  style={[styles.emptyText, { color: colors.textSecondary }]}
+                >
+                  No approval requests found.
+                </Text>
               </View>
             ) : (
               approvalRequests.map((req) => {
@@ -823,11 +1146,34 @@ export default function ReservationsScreen() {
                 const isPurchased = status === "purchased";
 
                 return (
-                  <View key={req.id} style={[styles.approvalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View
+                    key={req.id}
+                    style={[
+                      styles.approvalCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
                     <View style={styles.approvalHeader}>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.approvalPackageTitle, { color: colors.text }]}>{req.packageName}</Text>
-                        <Text style={[styles.approvalOfferingTitle, { color: colors.textSecondary }]}>{req.offeringName}</Text>
+                        <Text
+                          style={[
+                            styles.approvalPackageTitle,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {req.packageName}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.approvalServiceTitle,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
+                          {req.serviceName}
+                        </Text>
                       </View>
                       <View
                         style={[
@@ -855,43 +1201,129 @@ export default function ReservationsScreen() {
                     </View>
 
                     <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Couple:</Text>
-                      <Text style={[styles.detailValue, { color: colors.text }]}>
-                        {req.visitorName} {req.visitorEmail ? `(${req.visitorEmail})` : ""}
+                      <Text
+                        style={[
+                          styles.detailLabel,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        Couple:
+                      </Text>
+                      <Text
+                        style={[styles.detailValue, { color: colors.text }]}
+                      >
+                        {req.visitorName}{" "}
+                        {req.visitorEmail ? `(${req.visitorEmail})` : ""}
                       </Text>
                     </View>
 
                     {req.visitorPhone ? (
                       <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Phone:</Text>
-                        <Text style={[styles.detailValue, { color: colors.text }]}>{req.visitorPhone}</Text>
+                        <Text
+                          style={[
+                            styles.detailLabel,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
+                          Phone:
+                        </Text>
+                        <Text
+                          style={[styles.detailValue, { color: colors.text }]}
+                        >
+                          {req.visitorPhone}
+                        </Text>
                       </View>
                     ) : null}
 
                     <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Requested Date:</Text>
+                      <Text
+                        style={[
+                          styles.detailLabel,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        Requested Date:
+                      </Text>
                       <Text style={styles.detailValueHighlight}>
                         {formatDateString(req.bookingDate)}
                       </Text>
                     </View>
 
                     {req.userNote ? (
-                      <View style={[styles.noteBox, { backgroundColor: isDark ? colors.cardSubtle : "#F9FAFB" }]}>
-                        <Text style={[styles.noteBoxLabel, { color: colors.textSecondary }]}>Couple's Note:</Text>
-                        <Text style={[styles.noteBoxContent, { color: colors.text }]}>"{req.userNote}"</Text>
+                      <View
+                        style={[
+                          styles.noteBox,
+                          {
+                            backgroundColor: isDark
+                              ? colors.cardSubtle
+                              : "#F9FAFB",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.noteBoxLabel,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
+                          Couple's Note:
+                        </Text>
+                        <Text
+                          style={[
+                            styles.noteBoxContent,
+                            { color: colors.text },
+                          ]}
+                        >
+                          "{req.userNote}"
+                        </Text>
                       </View>
                     ) : null}
 
                     {req.vendorMessage ? (
-                      <View style={[styles.vendorResponseBox, { backgroundColor: isDark ? "rgba(37, 99, 235, 0.15)" : "#EFF6FF" }]}>
-                        <Text style={[styles.noteBoxLabel, { color: isDark ? "#93C5FD" : "#4B5563" }]}>Your Response:</Text>
-                        <Text style={[styles.noteBoxContent, { color: colors.text }]}>"{req.vendorMessage}"</Text>
+                      <View
+                        style={[
+                          styles.vendorResponseBox,
+                          {
+                            backgroundColor: isDark
+                              ? "rgba(37, 99, 235, 0.15)"
+                              : "#EFF6FF",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.noteBoxLabel,
+                            { color: isDark ? "#93C5FD" : "#4B5563" },
+                          ]}
+                        >
+                          Your Response:
+                        </Text>
+                        <Text
+                          style={[
+                            styles.noteBoxContent,
+                            { color: colors.text },
+                          ]}
+                        >
+                          "{req.vendorMessage}"
+                        </Text>
                       </View>
                     ) : null}
 
                     {isApproved && !isExpired && (
-                      <View style={[styles.countdownBox, isDark && { backgroundColor: "rgba(16, 185, 129, 0.15)" }]}>
-                        <Text style={[styles.countdownText, isDark && { color: "#34D399" }]}>
+                      <View
+                        style={[
+                          styles.countdownBox,
+                          isDark && {
+                            backgroundColor: "rgba(16, 185, 129, 0.15)",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.countdownText,
+                            isDark && { color: "#34D399" },
+                          ]}
+                        >
                           Couple has 24h from approval to pay advance.
                         </Text>
                       </View>
@@ -900,20 +1332,40 @@ export default function ReservationsScreen() {
                     {isPending && (
                       <View style={styles.approvalActionRow}>
                         <TouchableOpacity
-                          style={[styles.actionBtn, styles.declineBtn, isDark && { backgroundColor: "rgba(220, 38, 38, 0.15)", borderColor: "rgba(220, 38, 38, 0.3)" }]}
+                          style={[
+                            styles.actionBtn,
+                            styles.declineBtn,
+                            isDark && {
+                              backgroundColor: "rgba(220, 38, 38, 0.15)",
+                              borderColor: "rgba(220, 38, 38, 0.3)",
+                            },
+                          ]}
                           onPress={() => {
                             setResponseNote("");
-                            setActiveApprovalModal({ request: req, action: "reject" });
+                            setActiveApprovalModal({
+                              request: req,
+                              action: "reject",
+                            });
                           }}
                           activeOpacity={0.8}
                         >
-                          <Text style={[styles.declineBtnText, isDark && { color: "#F87171" }]}>Decline</Text>
+                          <Text
+                            style={[
+                              styles.declineBtnText,
+                              isDark && { color: "#F87171" },
+                            ]}
+                          >
+                            Decline
+                          </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[styles.actionBtn, styles.approveBtn]}
                           onPress={() => {
                             setResponseNote("");
-                            setActiveApprovalModal({ request: req, action: "approve" });
+                            setActiveApprovalModal({
+                              request: req,
+                              action: "approve",
+                            });
                           }}
                           activeOpacity={0.8}
                         >
@@ -946,19 +1398,32 @@ export default function ReservationsScreen() {
         >
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {activeApprovalModal?.action === "approve" ? "Approve Request" : "Decline Request"}
+              {activeApprovalModal?.action === "approve"
+                ? "Approve Request"
+                : "Decline Request"}
             </Text>
-            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
+            <Text
+              style={[styles.modalSubtitle, { color: colors.textSecondary }]}
+            >
               {activeApprovalModal?.action === "approve"
                 ? `Approve booking for ${activeApprovalModal?.request.visitorName} on ${formatDateString(
-                    activeApprovalModal?.request.bookingDate || ""
+                    activeApprovalModal?.request.bookingDate || "",
                   )}? The couple will have 24 hours to pay the advance.`
                 : `Are you sure you want to decline this booking request for ${activeApprovalModal?.request.visitorName}?`}
             </Text>
 
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Message to Couple (Optional):</Text>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+              Message to Couple (Optional):
+            </Text>
             <TextInput
-              style={[styles.modalInput, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]}
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: colors.inputBackground,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
               placeholder={
                 activeApprovalModal?.action === "approve"
                   ? "e.g. Happy to accommodate you! Looking forward to meeting."
@@ -981,12 +1446,20 @@ export default function ReservationsScreen() {
                 }}
                 disabled={actionLoading}
               >
-                <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>Cancel</Text>
+                <Text
+                  style={[
+                    styles.modalCancelText,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.modalConfirmBtn,
-                  activeApprovalModal?.action === "reject" && styles.modalRejectBtn,
+                  activeApprovalModal?.action === "reject" &&
+                    styles.modalRejectBtn,
                 ]}
                 onPress={handleConfirmApprovalAction}
                 disabled={actionLoading}
@@ -995,7 +1468,9 @@ export default function ReservationsScreen() {
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
                   <Text style={styles.modalConfirmText}>
-                    {activeApprovalModal?.action === "approve" ? "Approve" : "Decline"}
+                    {activeApprovalModal?.action === "approve"
+                      ? "Approve"
+                      : "Decline"}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1128,6 +1603,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 10,
     marginHorizontal: 2,
+  },
+  dayCellToday: {
+    borderWidth: 1.5,
+    borderColor: "#FC7B54",
+    shadowColor: "#FC7B54",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 5,
+    elevation: 3,
   },
   dayCellSelected: {
     backgroundColor: "#FFE8E1",
@@ -1279,7 +1763,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#111827",
   },
-  approvalOfferingTitle: {
+  approvalServiceTitle: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
     color: "#6B7280",
@@ -1637,7 +2121,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 4,
   },
-  metaOffering: {
+  metaService: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 12.5,
     color: "#4B5563",

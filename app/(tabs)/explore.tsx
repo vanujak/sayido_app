@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
 import { ExploreSkeleton } from "@/components/ui/skeletons";
-import { useFocusEffect, useGlobalSearchParams } from "expo-router";
 import { useAppTheme } from "@/context/ThemeContext";
+import { apiCredentials, graphQlUrl } from "@/lib/api-config";
+import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import { useFocusEffect, useGlobalSearchParams } from "expo-router";
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Package,
+  Sparkles,
+} from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
 import {
   AppState,
   Image,
@@ -14,19 +23,17 @@ import {
   UIManager,
   View,
 } from "react-native";
-import { Check, ChevronDown, ChevronUp, Package, Sparkles } from "lucide-react-native";
-import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
-import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 
 if (
   Platform.OS === "android" &&
   UIManager.setLayoutAnimationEnabledExperimental &&
-  !(globalThis as unknown as { nativeFabricUIManager?: unknown }).nativeFabricUIManager
+  !(globalThis as unknown as { nativeFabricUIManager?: unknown })
+    .nativeFabricUIManager
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-type Offering = {
+type Service = {
   id: string;
   name: string;
   category: string;
@@ -36,7 +43,7 @@ type Offering = {
 
 type VendorPackage = {
   id: string;
-  offeringId: string;
+  serviceId: string;
   name: string;
   description: string;
   pricing: number | null;
@@ -47,8 +54,8 @@ type VendorPackage = {
   image?: string | null;
 };
 
-type OfferingWithPackages = {
-  offering: Offering;
+type ServiceWithPackages = {
+  service: Service;
   packages: VendorPackage[];
 };
 const pickList = (value: unknown): Record<string, unknown>[] => {
@@ -56,10 +63,14 @@ const pickList = (value: unknown): Record<string, unknown>[] => {
   if (!value || typeof value !== "object") return [];
 
   const source = value as Record<string, unknown>;
-  if (Array.isArray(source.data)) return source.data as Record<string, unknown>[];
-  if (Array.isArray(source.items)) return source.items as Record<string, unknown>[];
-  if (Array.isArray(source.offerings)) return source.offerings as Record<string, unknown>[];
-  if (Array.isArray(source.packages)) return source.packages as Record<string, unknown>[];
+  if (Array.isArray(source.data))
+    return source.data as Record<string, unknown>[];
+  if (Array.isArray(source.items))
+    return source.items as Record<string, unknown>[];
+  if (Array.isArray(source.services))
+    return source.services as Record<string, unknown>[];
+  if (Array.isArray(source.packages))
+    return source.packages as Record<string, unknown>[];
   return [];
 };
 
@@ -101,7 +112,7 @@ const formatLkr = (value: number) =>
 
 async function graphQlRequest<TData>(
   query: string,
-  variables: Record<string, unknown>
+  variables: Record<string, unknown>,
 ): Promise<TData> {
   if (!graphQlUrl) {
     throw new Error("Missing EXPO_PUBLIC_GRAPHQL_URL");
@@ -162,7 +173,9 @@ const readVendorIdFromCookie = () => {
   if (jwtParts.length < 2) return "";
 
   try {
-    const payload = JSON.parse(atob(jwtParts[1].replace(/-/g, "+").replace(/_/g, "/"))) as {
+    const payload = JSON.parse(
+      atob(jwtParts[1].replace(/-/g, "+").replace(/_/g, "/")),
+    ) as {
       sub?: string;
     };
     return toText(payload.sub);
@@ -171,9 +184,9 @@ const readVendorIdFromCookie = () => {
   }
 };
 
-const mapOffering = (item: Record<string, unknown>): Offering => ({
+const mapService = (item: Record<string, unknown>): Service => ({
   id: toText(item.id),
-  name: toText(item.name, "Untitled offering"),
+  name: toText(item.name, "Untitled service"),
   category: toText(item.category, "Uncategorized"),
   description: toText(item.description),
   banner: toText(item.banner) || null,
@@ -193,19 +206,19 @@ const loadVendorIdByEmail = async (email: string): Promise<string> => {
         }
       }
     `,
-    { email: email.trim() }
+    { email: email.trim() },
   );
 
   return toText(data.findVendorByEmail?.id);
 };
 
-const loadOfferingsByVendor = async (vendorId: string): Promise<Offering[]> => {
+const loadServicesByVendor = async (vendorId: string): Promise<Service[]> => {
   const data = await graphQlRequest<{
-    findOfferingsByVendor?: Record<string, unknown>[];
+    findServicesByVendor?: Record<string, unknown>[];
   }>(
     `
-      query FindOfferingsByVendor($id: String!) {
-        findOfferingsByVendor(id: $id) {
+      query FindServicesByVendor($id: String!) {
+        findServicesByVendor(id: $id) {
           id
           name
           category
@@ -214,20 +227,24 @@ const loadOfferingsByVendor = async (vendorId: string): Promise<Offering[]> => {
         }
       }
     `,
-    { id: vendorId }
+    { id: vendorId },
   );
 
-  return pickList(data.findOfferingsByVendor).map(mapOffering).filter((offering) => !!offering.id);
+  return pickList(data.findServicesByVendor)
+    .map(mapService)
+    .filter((service) => !!service.id);
 };
 
-const loadOfferingsFromSession = async (vendorEmail: string): Promise<Offering[]> => {
+const loadServicesFromSession = async (
+  vendorEmail: string,
+): Promise<Service[]> => {
   const queryWithVendor = async () => {
     const data = await graphQlRequest<{
-      findOfferings?: Record<string, unknown>[];
+      findServices?: Record<string, unknown>[];
     }>(
       `
-        query FindOfferingsForSession {
-          findOfferings {
+        query FindServicesForSession {
+          findServices {
             id
             name
             category
@@ -240,22 +257,22 @@ const loadOfferingsFromSession = async (vendorEmail: string): Promise<Offering[]
           }
         }
       `,
-      {}
+      {},
     );
 
-    const offerings = pickList(data.findOfferings)
-      .map(mapOffering)
-      .filter((offering) => !!offering.id);
-    if (!vendorEmail.trim()) return offerings;
+    const services = pickList(data.findServices)
+      .map(mapService)
+      .filter((service) => !!service.id);
+    if (!vendorEmail.trim()) return services;
 
     const target = vendorEmail.trim().toLowerCase();
-    return pickList(data.findOfferings)
+    return pickList(data.findServices)
       .filter((item) => {
         const vendor = item.vendor as Record<string, unknown> | undefined;
         return toText(vendor?.email).toLowerCase() === target;
       })
-      .map(mapOffering)
-      .filter((offering) => !!offering.id);
+      .map(mapService)
+      .filter((service) => !!service.id);
   };
 
   try {
@@ -265,57 +282,64 @@ const loadOfferingsFromSession = async (vendorEmail: string): Promise<Offering[]
   }
 };
 
-const parsePackages = (raw: unknown, offeringId: string): VendorPackage[] => {
+const parsePackages = (raw: unknown, serviceId: string): VendorPackage[] => {
   return pickList(raw)
     .map((item) => {
-      const nestedOffering = item.offering as Record<string, unknown> | undefined;
-      const rawOfferingId =
-        toText(item.offering_id) || toText(item.offeringId) || toText(nestedOffering?.id);
+      const nestedService = item.service as Record<string, unknown> | undefined;
+      const rawServiceId =
+        toText(item.service_id) ||
+        toText(item.serviceId) ||
+        toText(nestedService?.id);
       return {
         id: toText(item.id),
-        offeringId: rawOfferingId || offeringId,
+        serviceId: rawServiceId || serviceId,
         name: toText(item.name, "Unnamed package"),
         description: toText(item.description),
         pricing: toPrice(item.pricing),
         features: toFeatures(item.features),
-        requiresReservation: Boolean(item.requires_reservation ?? item.requiresReservation),
-        requiresApproval: Boolean(item.requires_approval ?? item.requiresApproval),
+        requiresReservation: Boolean(
+          item.requires_reservation ?? item.requiresReservation,
+        ),
+        requiresApproval: Boolean(
+          item.requires_approval ?? item.requiresApproval,
+        ),
         visible: item.visible !== false,
         image: toText(item.image) || null,
       };
     })
-    .filter((pkg) => pkg.id && pkg.offeringId === offeringId && pkg.visible);
+    .filter((pkg) => pkg.id && pkg.serviceId === serviceId && pkg.visible);
 };
 
-const loadPackagesByOffering = async (offeringId: string): Promise<VendorPackage[]> => {
+const loadPackagesByService = async (
+  serviceId: string,
+): Promise<VendorPackage[]> => {
   const data = await graphQlRequest<{
-    findPackagesByOffering?: Record<string, unknown>[];
+    findPackagesByService?: Record<string, unknown>[];
   }>(
     `
-      query FindPackagesByOffering($offeringId: String!) {
-        findPackagesByOffering(offeringId: $offeringId) {
+      query FindPackagesByService($serviceId: String!) {
+        findPackagesByService(serviceId: $serviceId) {
           id
           name
           description
           pricing
-          features
           visible
           requiresReservation
           requiresApproval
           image
-          offering {
+          service {
             id
           }
         }
       }
     `,
-    { offeringId }
+    { serviceId },
   );
 
-  return parsePackages(data.findPackagesByOffering, offeringId);
+  return parsePackages(data.findPackagesByService, serviceId);
 };
 
-function OfferingBannerImage({ uri, alt }: { uri: string; alt: string }) {
+function ServiceBannerImage({ uri, alt }: { uri: string; alt: string }) {
   const [hasError, setHasError] = useState(false);
   if (hasError || !uri.trim()) return null;
 
@@ -323,7 +347,7 @@ function OfferingBannerImage({ uri, alt }: { uri: string; alt: string }) {
     <View style={styles.bannerContainer}>
       <Image
         source={{ uri }}
-        style={styles.offeringBanner}
+        style={styles.serviceBanner}
         resizeMode="cover"
         onError={() => setHasError(true)}
       />
@@ -331,20 +355,42 @@ function OfferingBannerImage({ uri, alt }: { uri: string; alt: string }) {
   );
 }
 
-function PackageThumbnailImage({ uri, alt }: { uri?: string | null; alt?: string }) {
+function PackageThumbnailImage({
+  uri,
+  alt,
+}: {
+  uri?: string | null;
+  alt?: string;
+}) {
   const { colors, isDark } = useAppTheme();
   const [hasError, setHasError] = useState(false);
 
   if (hasError || !uri?.trim()) {
     return (
-      <View style={[styles.thumbnailPlaceholder, isDark && { backgroundColor: "rgba(252, 123, 84, 0.15)", borderColor: "rgba(252, 123, 84, 0.3)" }]}>
+      <View
+        style={[
+          styles.thumbnailPlaceholder,
+          isDark && {
+            backgroundColor: "rgba(252, 123, 84, 0.15)",
+            borderColor: "rgba(252, 123, 84, 0.3)",
+          },
+        ]}
+      >
         <Package size={22} color="#FC7B54" />
       </View>
     );
   }
 
   return (
-    <View style={[styles.thumbnailContainer, { backgroundColor: isDark ? colors.cardSubtle : "#F3F4F6", borderColor: colors.border }]}>
+    <View
+      style={[
+        styles.thumbnailContainer,
+        {
+          backgroundColor: isDark ? colors.cardSubtle : "#F3F4F6",
+          borderColor: colors.border,
+        },
+      ]}
+    >
       <Image
         source={{ uri }}
         style={styles.thumbnailImage}
@@ -358,44 +404,110 @@ function PackageThumbnailImage({ uri, alt }: { uri?: string | null; alt?: string
 function PackageCard({ pkg }: { pkg: VendorPackage }) {
   const { colors, isDark } = useAppTheme();
   return (
-    <View style={[styles.packageCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View
+      style={[
+        styles.packageCard,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
       <View style={styles.packageHeader}>
         <PackageThumbnailImage uri={pkg.image} alt={pkg.name} />
 
         <View style={styles.headerInfo}>
-          <Text style={[styles.packageName, { color: colors.text }]} numberOfLines={2}>
+          <Text
+            style={[styles.packageName, { color: colors.text }]}
+            numberOfLines={2}
+          >
             {pkg.name}
           </Text>
 
           <Text style={styles.packagePrice}>
-            {pkg.pricing !== null ? formatLkr(pkg.pricing) : "Contact for pricing"}
+            {pkg.pricing !== null
+              ? formatLkr(pkg.pricing)
+              : "Contact for pricing"}
           </Text>
 
           <View style={styles.headerPillsRow}>
             {pkg.requiresApproval ? (
-              <View style={[styles.miniBadge, styles.miniBadgeApproval, isDark && { backgroundColor: "rgba(59, 130, 246, 0.15)", borderColor: "rgba(59, 130, 246, 0.3)" }]}>
-                <Text style={[styles.miniBadgeText, styles.miniBadgeTextApproval, isDark && { color: "#60A5FA" }]}>
+              <View
+                style={[
+                  styles.miniBadge,
+                  styles.miniBadgeApproval,
+                  isDark && {
+                    backgroundColor: "rgba(59, 130, 246, 0.15)",
+                    borderColor: "rgba(59, 130, 246, 0.3)",
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.miniBadgeText,
+                    styles.miniBadgeTextApproval,
+                    isDark && { color: "#60A5FA" },
+                  ]}
+                >
                   Requires Approval
                 </Text>
               </View>
             ) : pkg.requiresReservation ? (
-              <View style={[styles.miniBadge, styles.miniBadgeReservation, isDark && { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)" }]}>
-                <Text style={[styles.miniBadgeText, styles.miniBadgeTextReservation, isDark && { color: "#FBBF24" }]}>
+              <View
+                style={[
+                  styles.miniBadge,
+                  styles.miniBadgeReservation,
+                  isDark && {
+                    backgroundColor: "rgba(245, 158, 11, 0.15)",
+                    borderColor: "rgba(245, 158, 11, 0.3)",
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.miniBadgeText,
+                    styles.miniBadgeTextReservation,
+                    isDark && { color: "#FBBF24" },
+                  ]}
+                >
                   Requires Reservation
                 </Text>
               </View>
             ) : (
-              <View style={[styles.miniBadge, styles.miniBadgeNormal, isDark && { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)" }]}>
-                <Text style={[styles.miniBadgeText, styles.miniBadgeTextNormal, isDark && { color: "#34D399" }]}>
+              <View
+                style={[
+                  styles.miniBadge,
+                  styles.miniBadgeNormal,
+                  isDark && {
+                    backgroundColor: "rgba(16, 185, 129, 0.15)",
+                    borderColor: "rgba(16, 185, 129, 0.3)",
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.miniBadgeText,
+                    styles.miniBadgeTextNormal,
+                    isDark && { color: "#34D399" },
+                  ]}
+                >
                   Normal Package
                 </Text>
               </View>
             )}
 
             {pkg.features.length > 0 && (
-              <View style={[styles.featureCountBadge, isDark && { backgroundColor: colors.cardSubtle }]}>
-                <Text style={[styles.featureCountText, { color: colors.textSecondary }]}>
-                  {pkg.features.length} {pkg.features.length === 1 ? "feature" : "features"}
+              <View
+                style={[
+                  styles.featureCountBadge,
+                  isDark && { backgroundColor: colors.cardSubtle },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.featureCountText,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  {pkg.features.length}{" "}
+                  {pkg.features.length === 1 ? "feature" : "features"}
                 </Text>
               </View>
             )}
@@ -404,10 +516,25 @@ function PackageCard({ pkg }: { pkg: VendorPackage }) {
       </View>
 
       {(Boolean(pkg.description) || pkg.features.length > 0) && (
-        <View style={[styles.packageBody, { backgroundColor: isDark ? colors.cardSubtle : "#FAFAFC", borderTopColor: colors.border }]}>
+        <View
+          style={[
+            styles.packageBody,
+            {
+              backgroundColor: isDark ? colors.cardSubtle : "#FAFAFC",
+              borderTopColor: colors.border,
+            },
+          ]}
+        >
           {!!pkg.description && (
             <View style={styles.descriptionSection}>
-              <Text style={[styles.packageDescription, { color: colors.textSecondary }]}>{pkg.description}</Text>
+              <Text
+                style={[
+                  styles.packageDescription,
+                  { color: colors.textSecondary },
+                ]}
+              >
+                {pkg.description}
+              </Text>
             </View>
           )}
 
@@ -421,7 +548,9 @@ function PackageCard({ pkg }: { pkg: VendorPackage }) {
             >
               <View style={styles.featuresHeaderRow}>
                 <Sparkles size={13} color="#FC7B54" />
-                <Text style={[styles.featuresTitle, { color: colors.text }]}>What{"'"}s Included</Text>
+                <Text style={[styles.featuresTitle, { color: colors.text }]}>
+                  What{"'"}s Included
+                </Text>
               </View>
 
               <View style={styles.featuresList}>
@@ -430,14 +559,19 @@ function PackageCard({ pkg }: { pkg: VendorPackage }) {
                     key={`${pkg.id}-${feature}-${index}`}
                     style={styles.featureItem}
                   >
-                    <View style={[styles.featureCheckCircle, isDark && { backgroundColor: "rgba(16, 185, 129, 0.2)" }]}>
-                      <Check
-                        size={11}
-                        color="#059669"
-                        strokeWidth={3}
-                      />
+                    <View
+                      style={[
+                        styles.featureCheckCircle,
+                        isDark && {
+                          backgroundColor: "rgba(16, 185, 129, 0.2)",
+                        },
+                      ]}
+                    >
+                      <Check size={11} color="#059669" strokeWidth={3} />
                     </View>
-                    <Text style={[styles.featureText, { color: colors.text }]}>{feature}</Text>
+                    <Text style={[styles.featureText, { color: colors.text }]}>
+                      {feature}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -459,10 +593,12 @@ export default function PackagesScreen() {
     email?: string;
     vendor_email?: string;
   }>();
-  const [sections, setSections] = useState<OfferingWithPackages[]>([]);
+  const [sections, setSections] = useState<ServiceWithPackages[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [expandedOfferingIds, setExpandedOfferingIds] = useState<Record<string, boolean>>({});
+  const [expandedServiceIds, setExpandedServiceIds] = useState<
+    Record<string, boolean>
+  >({});
 
   const vendorId =
     (typeof params.vendor_id === "string" && params.vendor_id) ||
@@ -481,34 +617,41 @@ export default function PackagesScreen() {
     setErrorMessage("");
     try {
       const resolvedVendorId =
-        vendorId || (await loadVendorIdByEmail(vendorEmail)) || readVendorIdFromCookie();
+        vendorId ||
+        (await loadVendorIdByEmail(vendorEmail)) ||
+        readVendorIdFromCookie();
       if (!resolvedVendorId) {
         throw new Error("Could not resolve vendor id for packages.");
       }
-      setVendorSession({ vendorId: resolvedVendorId, email: vendorEmail || vendorSession.email });
+      setVendorSession({
+        vendorId: resolvedVendorId,
+        email: vendorEmail || vendorSession.email,
+      });
 
-      const offerings = resolvedVendorId
-        ? await loadOfferingsByVendor(resolvedVendorId)
-        : await loadOfferingsFromSession(vendorEmail);
+      const services = resolvedVendorId
+        ? await loadServicesByVendor(resolvedVendorId)
+        : await loadServicesFromSession(vendorEmail);
       const withPackages = await Promise.all(
-        offerings.map(async (offering) => {
-          const packages = await loadPackagesByOffering(offering.id);
-          return { offering, packages };
-        })
+        services.map(async (service) => {
+          let packages: VendorPackage[] = [];
+          try {
+            packages = await loadPackagesByService(service.id);
+          } catch {
+            packages = [];
+          }
+          return { service, packages };
+        }),
       );
 
       setSections(withPackages);
-      setExpandedOfferingIds((prev) => {
-        if (Object.keys(prev).length > 0) return prev;
-        const initial: Record<string, boolean> = {};
-        withPackages.forEach((entry, index) => {
-          if (index === 0) initial[entry.offering.id] = true;
-        });
-        return initial;
-      });
+      setExpandedServiceIds({});
     } catch (error) {
       setSections([]);
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load packages right now.");
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to load packages right now.",
+      );
     } finally {
       setLoading(false);
     }
@@ -521,7 +664,7 @@ export default function PackagesScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+    }, [loadData]),
   );
 
   useEffect(() => {
@@ -536,11 +679,11 @@ export default function PackagesScreen() {
     };
   }, [loadData]);
 
-  const toggleOffering = (offeringId: string) => {
+  const toggleService = (serviceId: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedOfferingIds((prev) => ({
+    setExpandedServiceIds((prev) => ({
       ...prev,
-      [offeringId]: !prev[offeringId],
+      [serviceId]: !prev[serviceId],
     }));
   };
 
@@ -551,10 +694,20 @@ export default function PackagesScreen() {
   if (errorMessage) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View style={[styles.centerState, { backgroundColor: colors.background }]}>
-          <Text style={[styles.errorTitle, { color: colors.text }]}>Could not load packages</Text>
-          <Text style={[styles.errorText, { color: colors.textSecondary }]}>{errorMessage}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadData} activeOpacity={0.8}>
+        <View
+          style={[styles.centerState, { backgroundColor: colors.background }]}
+        >
+          <Text style={[styles.errorTitle, { color: colors.text }]}>
+            Could not load packages
+          </Text>
+          <Text style={[styles.errorText, { color: colors.textSecondary }]}>
+            {errorMessage}
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={loadData}
+            activeOpacity={0.8}
+          >
             <Text style={styles.retryText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -568,103 +721,191 @@ export default function PackagesScreen() {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.title, { color: colors.text }]}>Services & Packages</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Your offerings and their packages</Text>
+        <Text style={[styles.title, { color: colors.text }]}>
+          Services & Packages
+        </Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          Your services and their packages
+        </Text>
 
         {sections.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>No services yet</Text>
+          <View
+            style={[
+              styles.emptyCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>
+              No services yet
+            </Text>
             <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
               Add services and packages to show them on this page.
             </Text>
           </View>
         ) : (
           sections.map((entry) => {
-            const isOfferingOpen = Boolean(expandedOfferingIds[entry.offering.id]);
+            const isServiceOpen = Boolean(expandedServiceIds[entry.service.id]);
             const packageCount = entry.packages.length;
 
             return (
               <View
-                key={entry.offering.id}
+                key={entry.service.id}
                 style={[
-                  styles.offeringCard,
+                  styles.serviceCard,
                   { backgroundColor: colors.card, borderColor: colors.border },
-                  isOfferingOpen && [styles.offeringCardOpen, { borderColor: colors.primary }],
+                  isServiceOpen && [
+                    styles.serviceCardOpen,
+                    { borderColor: colors.primary },
+                  ],
                 ]}
               >
                 {/* Service Header Accordion Button */}
                 <TouchableOpacity
-                  style={styles.offeringHeader}
-                  onPress={() => toggleOffering(entry.offering.id)}
+                  style={styles.serviceHeader}
+                  onPress={() => toggleService(entry.service.id)}
                   activeOpacity={0.7}
                   accessibilityRole="button"
-                  accessibilityState={{ expanded: isOfferingOpen }}
+                  accessibilityState={{ expanded: isServiceOpen }}
                 >
-                  <View style={styles.offeringHeaderMain}>
-                    <View style={styles.offeringBadgesRow}>
-                      <View style={[styles.categoryBadge, isDark && { backgroundColor: "rgba(252, 123, 84, 0.15)", borderColor: "rgba(252, 123, 84, 0.3)" }]}>
+                  <View style={styles.serviceHeaderMain}>
+                    <View style={styles.serviceBadgesRow}>
+                      <View
+                        style={[
+                          styles.categoryBadge,
+                          isDark && {
+                            backgroundColor: "rgba(252, 123, 84, 0.15)",
+                            borderColor: "rgba(252, 123, 84, 0.3)",
+                          },
+                        ]}
+                      >
                         <Text style={styles.categoryBadgeText}>
-                          {entry.offering.category.toUpperCase()}
+                          {entry.service.category.toUpperCase()}
                         </Text>
                       </View>
-                      <View style={[styles.packageCountBadge, isDark && { backgroundColor: colors.cardSubtle, borderColor: colors.border }]}>
-                        <Text style={[styles.packageCountBadgeText, { color: colors.textSecondary }]}>
-                          {packageCount} {packageCount === 1 ? "Package" : "Packages"}
+                      <View
+                        style={[
+                          styles.packageCountBadge,
+                          isDark && {
+                            backgroundColor: colors.cardSubtle,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.packageCountBadgeText,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
+                          {packageCount}{" "}
+                          {packageCount === 1 ? "Package" : "Packages"}
                         </Text>
                       </View>
                     </View>
 
-                    <Text style={[styles.offeringName, { color: colors.text }]}>{entry.offering.name}</Text>
+                    <Text style={[styles.serviceName, { color: colors.text }]}>
+                      {entry.service.name}
+                    </Text>
 
-                    {Boolean(entry.offering.description) && !isOfferingOpen && (
-                      <Text style={[styles.offeringDescriptionCollapsed, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {entry.offering.description}
+                    {Boolean(entry.service.description) && !isServiceOpen && (
+                      <Text
+                        style={[
+                          styles.serviceDescriptionCollapsed,
+                          { color: colors.textSecondary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {entry.service.description}
                       </Text>
                     )}
                   </View>
 
                   <View
                     style={[
-                      styles.offeringChevronCircle,
+                      styles.serviceChevronCircle,
                       isDark && { backgroundColor: colors.cardSubtle },
-                      isOfferingOpen && [styles.offeringChevronCircleOpen, isDark && { backgroundColor: "rgba(252, 123, 84, 0.2)" }],
+                      isServiceOpen && [
+                        styles.serviceChevronCircleOpen,
+                        isDark && {
+                          backgroundColor: "rgba(252, 123, 84, 0.2)",
+                        },
+                      ],
                     ]}
                   >
-                    {isOfferingOpen ? (
+                    {isServiceOpen ? (
                       <ChevronUp size={20} color="#FC7B54" strokeWidth={2.5} />
                     ) : (
-                      <ChevronDown size={20} color={colors.textSecondary} strokeWidth={2.5} />
+                      <ChevronDown
+                        size={20}
+                        color={colors.textSecondary}
+                        strokeWidth={2.5}
+                      />
                     )}
                   </View>
                 </TouchableOpacity>
 
                 {/* Expanded Service Content: Packages & Details */}
-                {isOfferingOpen && (
-                  <View style={[styles.offeringBody, { borderTopColor: colors.border }]}>
-                    {Boolean(entry.offering.banner) && (
-                      <OfferingBannerImage
-                        uri={entry.offering.banner!}
-                        alt={entry.offering.name}
+                {isServiceOpen && (
+                  <View
+                    style={[
+                      styles.serviceBody,
+                      { borderTopColor: colors.border },
+                    ]}
+                  >
+                    {Boolean(entry.service.banner) && (
+                      <ServiceBannerImage
+                        uri={entry.service.banner!}
+                        alt={entry.service.name}
                       />
                     )}
 
-                    {Boolean(entry.offering.description) && (
-                      <Text style={[styles.offeringDescription, { color: colors.textSecondary }]}>
-                        {entry.offering.description}
+                    {Boolean(entry.service.description) && (
+                      <Text
+                        style={[
+                          styles.serviceDescription,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        {entry.service.description}
                       </Text>
                     )}
 
                     {entry.packages.length === 0 ? (
-                      <View style={[styles.noPackagesBox, { backgroundColor: isDark ? colors.cardSubtle : "#F9FAFB", borderColor: colors.border }]}>
-                        <Package size={20} color={isDark ? "#64748B" : "#9CA3AF"} />
-                        <Text style={[styles.noPackagesText, { color: colors.textSecondary }]}>
+                      <View
+                        style={[
+                          styles.noPackagesBox,
+                          {
+                            backgroundColor: isDark
+                              ? colors.cardSubtle
+                              : "#F9FAFB",
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Package
+                          size={20}
+                          color={isDark ? "#64748B" : "#9CA3AF"}
+                        />
+                        <Text
+                          style={[
+                            styles.noPackagesText,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
                           No packages yet for this service.
                         </Text>
                       </View>
                     ) : (
                       <View style={styles.packagesSection}>
                         <View style={styles.packagesSectionHeader}>
-                          <Text style={[styles.packagesSectionTitle, { color: colors.textSecondary }]}>Packages</Text>
+                          <Text
+                            style={[
+                              styles.packagesSectionTitle,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            Packages
+                          </Text>
                         </View>
 
                         <View style={styles.packagesList}>
@@ -764,7 +1005,7 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     color: "#6B7280",
   },
-  offeringCard: {
+  serviceCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
     borderWidth: 1.5,
@@ -777,24 +1018,24 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  offeringCardOpen: {
+  serviceCardOpen: {
     borderColor: "#FC7B54",
     borderWidth: 1.5,
     shadowOpacity: 0.1,
     shadowRadius: 12,
   },
-  offeringHeader: {
+  serviceHeader: {
     padding: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  offeringHeaderMain: {
+  serviceHeaderMain: {
     flex: 1,
     marginRight: 12,
     alignItems: "flex-start",
   },
-  offeringBadgesRow: {
+  serviceBadgesRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -830,7 +1071,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#4B5563",
   },
-  offeringName: {
+  serviceName: {
     fontFamily: "Outfit_700Bold",
     fontSize: 18,
     color: "#111827",
@@ -838,14 +1079,14 @@ const styles = StyleSheet.create({
     textAlign: "left",
     alignSelf: "flex-start",
   },
-  offeringDescriptionCollapsed: {
+  serviceDescriptionCollapsed: {
     marginTop: 4,
     fontFamily: "Montserrat_400Regular",
     fontSize: 12.5,
     color: "#6B7280",
     lineHeight: 18,
   },
-  offeringChevronCircle: {
+  serviceChevronCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -853,10 +1094,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  offeringChevronCircleOpen: {
+  serviceChevronCircleOpen: {
     backgroundColor: "#FFF3EE",
   },
-  offeringBody: {
+  serviceBody: {
     padding: 16,
     paddingTop: 0,
     borderTopWidth: 1,
@@ -870,11 +1111,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     overflow: "hidden",
   },
-  offeringBanner: {
+  serviceBanner: {
     width: "100%",
     height: "100%",
   },
-  offeringDescription: {
+  serviceDescription: {
     marginTop: 10,
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,

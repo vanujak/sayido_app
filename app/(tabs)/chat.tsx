@@ -1,9 +1,11 @@
+import { ChatSkeleton } from "@/components/ui/skeletons";
+import { useAppTheme } from "@/context/ThemeContext";
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { getChatSocket } from "@/lib/chat-socket";
-import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { formatCoupleName } from "@/lib/formatCoupleName";
-import { ChatSkeleton } from "@/components/ui/skeletons";
+import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
+import { ArrowLeft, ChevronRight, Mail, Send } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,8 +20,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useAppTheme } from "@/context/ThemeContext";
-import { ArrowLeft, ChevronRight, Mail, Send } from "lucide-react-native";
 
 type ChatMessage = {
   id?: string;
@@ -32,7 +32,7 @@ type ChatMessage = {
 type VendorChat = {
   chatId: string;
   visitorId: string;
-  offeringId: string;
+  serviceId: string;
   updatedAt: string;
   messages: ChatMessage[];
 };
@@ -49,7 +49,7 @@ type ChatRow = {
   visitorName: string;
   visitorEmail: string;
   visitorAvatarUrl?: string;
-  offeringName: string;
+  serviceName: string;
   lastMessage: string;
   lastMessageAt: string;
   messages: ChatMessage[];
@@ -100,7 +100,10 @@ function ChatAvatar({
 
   const containerStyle = [
     styles.avatar,
-    isDark && { backgroundColor: "rgba(252, 123, 84, 0.15)", borderColor: "rgba(252, 123, 84, 0.3)" },
+    isDark && {
+      backgroundColor: "rgba(252, 123, 84, 0.15)",
+      borderColor: "rgba(252, 123, 84, 0.3)",
+    },
     size !== 48 ? { width: size, height: size, borderRadius: size / 2 } : null,
   ];
 
@@ -119,7 +122,12 @@ function ChatAvatar({
 
   return (
     <View style={containerStyle}>
-      <Text style={[styles.avatarText, size !== 48 ? { fontSize: Math.round(size * 0.35) } : null]}>
+      <Text
+        style={[
+          styles.avatarText,
+          size !== 48 ? { fontSize: Math.round(size * 0.35) } : null,
+        ]}
+      >
         {getInitials(name)}
       </Text>
     </View>
@@ -166,7 +174,7 @@ async function graphQlRequest<TData>(
   }
 
   return payload.data;
-};
+}
 
 const readVendorIdFromCookie = () => {
   const browserGlobals = globalThis as BrowserGlobals;
@@ -221,7 +229,7 @@ const loadVendorChats = async (vendorId: string): Promise<VendorChat[]> => {
     getVendorChats?: {
       chatId?: string;
       visitorId?: string;
-      offeringId?: string;
+      serviceId?: string;
       updatedAt?: string;
       messages?: {
         id?: string;
@@ -237,7 +245,7 @@ const loadVendorChats = async (vendorId: string): Promise<VendorChat[]> => {
         getVendorChats(vendorId: $vendorId) {
           chatId
           visitorId
-          offeringId
+          serviceId
           updatedAt
           messages {
             id
@@ -257,7 +265,7 @@ const loadVendorChats = async (vendorId: string): Promise<VendorChat[]> => {
     .map((item) => ({
       chatId: toText(item.chatId),
       visitorId: toText(item.visitorId),
-      offeringId: toText(item.offeringId),
+      serviceId: toText(item.serviceId),
       updatedAt: toText(item.updatedAt),
       messages: Array.isArray(item.messages)
         ? item.messages.map((message) => ({
@@ -326,7 +334,10 @@ const sendVendorMessage = async (
   }));
 };
 
-const markChatAsRead = async (chatId: string, userId: string): Promise<void> => {
+const markChatAsRead = async (
+  chatId: string,
+  userId: string,
+): Promise<void> => {
   await graphQlRequest<{
     markChatAsRead?: boolean;
   }>(
@@ -359,13 +370,13 @@ const loadVisitorById = async (id: string): Promise<VisitorDetails> => {
   return data.findVisitorById || {};
 };
 
-const loadOfferingNameById = async (id: string): Promise<string> => {
+const loadServiceNameById = async (id: string): Promise<string> => {
   const data = await graphQlRequest<{
-    findOfferingById?: { name?: string } | null;
+    findServiceById?: { name?: string } | null;
   }>(
     `
-      query FindOfferingByIdForChats($id: String!) {
-        findOfferingById(id: $id) {
+      query FindServiceByIdForChats($id: String!) {
+        findServiceById(id: $id) {
           name
         }
       }
@@ -373,14 +384,15 @@ const loadOfferingNameById = async (id: string): Promise<string> => {
     { id },
   );
 
-  return toText(data.findOfferingById?.name, "Offering");
+  return toText(data.findServiceById?.name, "Service");
 };
 
 const isSameDay = (d1: string, d2: string) => {
   if (!d1 || !d2) return false;
   const date1 = new Date(d1);
   const date2 = new Date(d2);
-  if (Number.isNaN(date1.getTime()) || Number.isNaN(date2.getTime())) return false;
+  if (Number.isNaN(date1.getTime()) || Number.isNaN(date2.getTime()))
+    return false;
   return (
     date1.getFullYear() === date2.getFullYear() &&
     date1.getMonth() === date2.getMonth() &&
@@ -415,13 +427,18 @@ const formatChatDateHeader = (value: string) => {
 
   if (isYesterday) return "Yesterday";
 
-  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  const diffDays = Math.floor(
+    (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
+  );
   if (diffDays > 0 && diffDays < 7) {
     return date.toLocaleDateString(undefined, { weekday: "long" });
   }
 
   if (date.getFullYear() === now.getFullYear()) {
-    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
   }
 
   return date.toLocaleDateString(undefined, {
@@ -454,12 +471,18 @@ const formatTimeAgo = (value: string) => {
 
   if (isYesterday) return "Yesterday";
 
-  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  const diffDays = Math.floor(
+    (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
+  );
   if (diffDays > 0 && diffDays < 7) {
     return date.toLocaleDateString(undefined, { weekday: "short" });
   }
 
-  return date.toLocaleDateString(undefined, { month: "numeric", day: "numeric", year: "2-digit" });
+  return date.toLocaleDateString(undefined, {
+    month: "numeric",
+    day: "numeric",
+    year: "2-digit",
+  });
 };
 
 export default function ChatScreen() {
@@ -519,16 +542,21 @@ export default function ChatScreen() {
         return false; // let tab navigation handle it (e.g. goes back to Dashboard)
       };
 
-      const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        onBackPress,
+      );
       return () => subscription.remove();
-    }, [activeChatId, handleBackToChatList])
+    }, [activeChatId, handleBackToChatList]),
   );
 
   const loadData = useCallback(async () => {
     setErrorMessage("");
     try {
       const resolvedVendorId =
-        vendorId || (await loadVendorIdByEmail(vendorEmail)) || readVendorIdFromCookie();
+        vendorId ||
+        (await loadVendorIdByEmail(vendorEmail)) ||
+        readVendorIdFromCookie();
 
       if (!resolvedVendorId) {
         throw new Error("Could not resolve vendor id for chats.");
@@ -542,10 +570,14 @@ export default function ChatScreen() {
 
       const chats = await loadVendorChats(resolvedVendorId);
 
-      const visitorIds = [...new Set(chats.map((chat) => chat.visitorId).filter(Boolean))];
-      const offeringIds = [...new Set(chats.map((chat) => chat.offeringId).filter(Boolean))];
+      const visitorIds = [
+        ...new Set(chats.map((chat) => chat.visitorId).filter(Boolean)),
+      ];
+      const serviceIds = [
+        ...new Set(chats.map((chat) => chat.serviceId).filter(Boolean)),
+      ];
 
-      const [visitorEntries, offeringEntries] = await Promise.all([
+      const [visitorEntries, serviceEntries] = await Promise.all([
         Promise.all(
           visitorIds.map(async (id) => {
             try {
@@ -556,18 +588,18 @@ export default function ChatScreen() {
           }),
         ),
         Promise.all(
-          offeringIds.map(async (id) => {
+          serviceIds.map(async (id) => {
             try {
-              return [id, await loadOfferingNameById(id)] as const;
+              return [id, await loadServiceNameById(id)] as const;
             } catch {
-              return [id, "Offering"] as const;
+              return [id, "Service"] as const;
             }
           }),
         ),
       ]);
 
       const visitorMap = new Map<string, VisitorDetails>(visitorEntries);
-      const offeringMap = new Map<string, string>(offeringEntries);
+      const serviceMap = new Map<string, string>(serviceEntries);
 
       const normalizedRows = chats.map((chat) => {
         const visitor = visitorMap.get(chat.visitorId) || {};
@@ -576,7 +608,7 @@ export default function ChatScreen() {
             visitor_fname: toText(visitor.visitor_fname),
             partner_fname: toText(visitor.partner_fname),
           },
-          "Client"
+          "Client",
         );
         const lastMessage = chat.messages[chat.messages.length - 1];
 
@@ -585,7 +617,7 @@ export default function ChatScreen() {
           visitorName,
           visitorEmail: toText(visitor.email),
           visitorAvatarUrl: toText(visitor.profile_pic_url),
-          offeringName: offeringMap.get(chat.offeringId) || "Offering",
+          serviceName: serviceMap.get(chat.serviceId) || "Service",
           lastMessage: toText(lastMessage?.content, "No messages yet"),
           lastMessageAt: toText(lastMessage?.timestamp || chat.updatedAt),
           messages: chat.messages,
@@ -595,13 +627,19 @@ export default function ChatScreen() {
       normalizedRows.sort((a, b) => {
         const aDate = new Date(a.lastMessageAt).getTime();
         const bDate = new Date(b.lastMessageAt).getTime();
-        return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+        return (
+          (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate)
+        );
       });
 
       setRows(normalizedRows);
     } catch (error) {
       setRows([]);
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load chats right now.");
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to load chats right now.",
+      );
     } finally {
       setLoading(false);
     }
@@ -653,7 +691,10 @@ export default function ChatScreen() {
     const joinKnownChats = () => {
       rowsRef.current.forEach((row) => {
         if (!row.chatId || joinedChatsRef.current.has(row.chatId)) return;
-        socket.emit("joinChat", { chatId: row.chatId, userId: resolvedVendorId });
+        socket.emit("joinChat", {
+          chatId: row.chatId,
+          userId: resolvedVendorId,
+        });
         joinedChatsRef.current.add(row.chatId);
       });
     };
@@ -693,7 +734,9 @@ export default function ChatScreen() {
       const chatId = toText(payload.chatId);
       if (!chatId) return;
 
-      const socketMessages = Array.isArray(payload.chat?.messages) ? payload.chat.messages : [];
+      const socketMessages = Array.isArray(payload.chat?.messages)
+        ? payload.chat.messages
+        : [];
       const normalizedMessages = socketMessages.length
         ? socketMessages.map((message) => ({
             id: toText(message.id),
@@ -710,7 +753,10 @@ export default function ChatScreen() {
             content: toText(payload.message.content),
             senderId: toText(payload.message.senderId),
             senderType: toText(payload.message.senderType),
-            timestamp: toText(payload.message.timestamp, new Date().toISOString()),
+            timestamp: toText(
+              payload.message.timestamp,
+              new Date().toISOString(),
+            ),
           }
         : null;
 
@@ -723,7 +769,9 @@ export default function ChatScreen() {
           const nextMessages = normalizedMessages.length
             ? normalizedMessages
             : fallbackMessage
-              ? row.messages.some((msg) => msg.id && msg.id === fallbackMessage.id)
+              ? row.messages.some(
+                  (msg) => msg.id && msg.id === fallbackMessage.id,
+                )
                 ? row.messages
                 : [...row.messages, fallbackMessage]
               : row.messages;
@@ -745,7 +793,10 @@ export default function ChatScreen() {
         return nextRows.sort((a, b) => {
           const aDate = new Date(a.lastMessageAt).getTime();
           const bDate = new Date(b.lastMessageAt).getTime();
-          return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+          return (
+            (Number.isNaN(bDate) ? 0 : bDate) -
+            (Number.isNaN(aDate) ? 0 : aDate)
+          );
         });
       });
 
@@ -808,7 +859,11 @@ export default function ChatScreen() {
     setSending(true);
     setSendError("");
     try {
-      const updatedMessages = await sendVendorMessage(activeChatId, trimmed, senderVendorId);
+      const updatedMessages = await sendVendorMessage(
+        activeChatId,
+        trimmed,
+        senderVendorId,
+      );
       const fallbackTimestamp = new Date().toISOString();
       const latestMessage = updatedMessages[updatedMessages.length - 1];
 
@@ -826,12 +881,17 @@ export default function ChatScreen() {
         return updated.sort((a, b) => {
           const aDate = new Date(a.lastMessageAt).getTime();
           const bDate = new Date(b.lastMessageAt).getTime();
-          return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+          return (
+            (Number.isNaN(bDate) ? 0 : bDate) -
+            (Number.isNaN(aDate) ? 0 : aDate)
+          );
         });
       });
       setReplyText("");
     } catch (error) {
-      setSendError(error instanceof Error ? error.message : "Unable to send message.");
+      setSendError(
+        error instanceof Error ? error.message : "Unable to send message.",
+      );
     } finally {
       setSending(false);
     }
@@ -844,9 +904,22 @@ export default function ChatScreen() {
 
     if (errorMessage) {
       return (
-        <View style={[styles.centerState, styles.errorCard, isDark && { backgroundColor: "rgba(239, 68, 68, 0.15)", borderColor: "rgba(239, 68, 68, 0.3)" }]}>
-          <Text style={[styles.errorTitle, isDark && { color: "#F87171" }]}>Unable to load vendor chats</Text>
-          <Text style={[styles.errorText, isDark && { color: "#FCA5A5" }]}>{errorMessage}</Text>
+        <View
+          style={[
+            styles.centerState,
+            styles.errorCard,
+            isDark && {
+              backgroundColor: "rgba(239, 68, 68, 0.15)",
+              borderColor: "rgba(239, 68, 68, 0.3)",
+            },
+          ]}
+        >
+          <Text style={[styles.errorTitle, isDark && { color: "#F87171" }]}>
+            Unable to load vendor chats
+          </Text>
+          <Text style={[styles.errorText, isDark && { color: "#FCA5A5" }]}>
+            {errorMessage}
+          </Text>
         </View>
       );
     }
@@ -854,7 +927,9 @@ export default function ChatScreen() {
     if (!rows.length) {
       return (
         <View style={styles.centerState}>
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>No conversations yet</Text>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>
+            No conversations yet
+          </Text>
           <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
             Chats from couples will appear here once they message you.
           </Text>
@@ -873,22 +948,44 @@ export default function ChatScreen() {
               style={({ pressed }) => [
                 styles.backButton,
                 { backgroundColor: colors.card, borderColor: colors.border },
-                pressed && [styles.backButtonPressed, { backgroundColor: colors.cardSubtle }],
+                pressed && [
+                  styles.backButtonPressed,
+                  { backgroundColor: colors.cardSubtle },
+                ],
               ]}
               onPress={handleBackToChatList}
               hitSlop={8}
             >
               <ArrowLeft size={20} color={colors.text} />
             </Pressable>
-            <View style={[styles.chatHeader, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <ChatAvatar name={activeChat.visitorName} imageUrl={activeChat.visitorAvatarUrl} />
+            <View
+              style={[
+                styles.chatHeader,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <ChatAvatar
+                name={activeChat.visitorName}
+                imageUrl={activeChat.visitorAvatarUrl}
+              />
               <View style={styles.chatHeaderContent}>
-                <Text style={[styles.chatTitle, { color: colors.text }]} numberOfLines={1}>
+                <Text
+                  style={[styles.chatTitle, { color: colors.text }]}
+                  numberOfLines={1}
+                >
                   {activeChat.visitorName}
                 </Text>
-                <View style={[styles.offeringBadge, isDark && { backgroundColor: "rgba(252, 123, 84, 0.15)", borderColor: "rgba(252, 123, 84, 0.3)" }]}>
-                  <Text style={styles.offeringBadgeText} numberOfLines={1}>
-                    {activeChat.offeringName}
+                <View
+                  style={[
+                    styles.serviceBadge,
+                    isDark && {
+                      backgroundColor: "rgba(252, 123, 84, 0.15)",
+                      borderColor: "rgba(252, 123, 84, 0.3)",
+                    },
+                  ]}
+                >
+                  <Text style={styles.serviceBadgeText} numberOfLines={1}>
+                    {activeChat.serviceName}
                   </Text>
                 </View>
               </View>
@@ -898,21 +995,40 @@ export default function ChatScreen() {
             ref={messagesScrollRef}
             style={styles.messagesScroll}
             contentContainerStyle={styles.messagesList}
-            onContentSizeChange={() => messagesScrollRef.current?.scrollToEnd({ animated: false })}
+            onContentSizeChange={() =>
+              messagesScrollRef.current?.scrollToEnd({ animated: false })
+            }
           >
             {activeChat.messages.length ? (
               activeChat.messages.map((message, index) => {
                 const mine = message.senderType.toLowerCase() === "vendor";
-                const prevMessage = index > 0 ? activeChat.messages[index - 1] : null;
+                const prevMessage =
+                  index > 0 ? activeChat.messages[index - 1] : null;
                 const showDateHeader =
-                  index === 0 || !isSameDay(prevMessage?.timestamp || "", message.timestamp);
+                  index === 0 ||
+                  !isSameDay(prevMessage?.timestamp || "", message.timestamp);
                 const timeText = formatMessageTime(message.timestamp);
 
                 return (
-                  <View key={`${message.id || message.timestamp || "msg"}-${index}`}>
+                  <View
+                    key={`${message.id || message.timestamp || "msg"}-${index}`}
+                  >
                     {showDateHeader && (
-                      <View style={[styles.dateSeparator, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <Text style={[styles.dateSeparatorText, { color: colors.textSecondary }]}>
+                      <View
+                        style={[
+                          styles.dateSeparator,
+                          {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.dateSeparatorText,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
                           {formatChatDateHeader(message.timestamp)}
                         </Text>
                       </View>
@@ -922,14 +1038,35 @@ export default function ChatScreen() {
                         styles.messageBubble,
                         mine
                           ? styles.myMessageBubble
-                          : [styles.otherMessageBubble, { backgroundColor: colors.card, borderColor: colors.border }],
+                          : [
+                              styles.otherMessageBubble,
+                              {
+                                backgroundColor: colors.card,
+                                borderColor: colors.border,
+                              },
+                            ],
                       ]}
                     >
-                      <Text style={mine ? styles.myMessageText : [styles.otherMessageText, { color: colors.text }]}>
+                      <Text
+                        style={
+                          mine
+                            ? styles.myMessageText
+                            : [styles.otherMessageText, { color: colors.text }]
+                        }
+                      >
                         {toText(message.content, "...")}
                       </Text>
                       {!!timeText && (
-                        <Text style={mine ? styles.myMessageTime : [styles.otherMessageTime, { color: colors.textSecondary }]}>
+                        <Text
+                          style={
+                            mine
+                              ? styles.myMessageTime
+                              : [
+                                  styles.otherMessageTime,
+                                  { color: colors.textSecondary },
+                                ]
+                          }
+                        >
                           {timeText}
                         </Text>
                       )}
@@ -938,7 +1075,11 @@ export default function ChatScreen() {
                 );
               })
             ) : (
-              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>No messages in this chat yet.</Text>
+              <Text
+                style={[styles.emptySubtitle, { color: colors.textSecondary }]}
+              >
+                No messages in this chat yet.
+              </Text>
             )}
           </ScrollView>
           <View style={styles.replyBar}>
@@ -947,7 +1088,14 @@ export default function ChatScreen() {
               placeholderTextColor={isDark ? "#64748B" : "#9CA3AF"}
               value={replyText}
               onChangeText={setReplyText}
-              style={[styles.replyInput, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]}
+              style={[
+                styles.replyInput,
+                {
+                  backgroundColor: colors.inputBackground,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
               multiline
             />
             <Pressable
@@ -982,30 +1130,56 @@ export default function ChatScreen() {
               style={({ pressed }) => [
                 styles.card,
                 { backgroundColor: colors.card, borderColor: colors.border },
-                pressed && [styles.cardPressed, { backgroundColor: isDark ? colors.cardSubtle : "#FFF9F6", borderColor: colors.primary }],
+                pressed && [
+                  styles.cardPressed,
+                  {
+                    backgroundColor: isDark ? colors.cardSubtle : "#FFF9F6",
+                    borderColor: colors.primary,
+                  },
+                ],
               ]}
               onPress={() => setActiveChatId(row.chatId)}
             >
-              <ChatAvatar name={row.visitorName} imageUrl={row.visitorAvatarUrl} />
+              <ChatAvatar
+                name={row.visitorName}
+                imageUrl={row.visitorAvatarUrl}
+              />
 
               <View style={styles.cardContent}>
                 <View style={styles.rowHeader}>
-                  <Text style={[styles.clientName, { color: colors.text }]} numberOfLines={1}>
+                  <Text
+                    style={[styles.clientName, { color: colors.text }]}
+                    numberOfLines={1}
+                  >
                     {row.visitorName}
                   </Text>
-                  <Text style={[styles.time, { color: colors.textSecondary }]}>{formatTimeAgo(row.lastMessageAt)}</Text>
+                  <Text style={[styles.time, { color: colors.textSecondary }]}>
+                    {formatTimeAgo(row.lastMessageAt)}
+                  </Text>
                 </View>
 
                 <View style={styles.metaRow}>
-                  <View style={[styles.offeringBadge, isDark && { backgroundColor: "rgba(252, 123, 84, 0.15)", borderColor: "rgba(252, 123, 84, 0.3)" }]}>
-                    <Text style={styles.offeringBadgeText} numberOfLines={1}>
-                      {row.offeringName}
+                  <View
+                    style={[
+                      styles.serviceBadge,
+                      isDark && {
+                        backgroundColor: "rgba(252, 123, 84, 0.15)",
+                        borderColor: "rgba(252, 123, 84, 0.3)",
+                      },
+                    ]}
+                  >
+                    <Text style={styles.serviceBadgeText} numberOfLines={1}>
+                      {row.serviceName}
                     </Text>
                   </View>
                   {!!row.visitorEmail && (
                     <View style={styles.emailContainer}>
                       <Mail size={11} color={isDark ? "#64748B" : "#9CA3AF"} />
-                      <Text style={[styles.email, { color: colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
+                      <Text
+                        style={[styles.email, { color: colors.textSecondary }]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
                         {row.visitorEmail}
                       </Text>
                     </View>
@@ -1022,21 +1196,42 @@ export default function ChatScreen() {
                   ellipsizeMode="tail"
                 >
                   {isFromVendor ? (
-                    <Text style={[styles.messagePreviewSender, { color: colors.text }]}>You: </Text>
+                    <Text
+                      style={[
+                        styles.messagePreviewSender,
+                        { color: colors.text },
+                      ]}
+                    >
+                      You:{" "}
+                    </Text>
                   ) : null}
                   {row.lastMessage || "No messages yet"}
                 </Text>
               </View>
 
               <View style={styles.chevronContainer}>
-                <ChevronRight size={18} color={isDark ? "#64748B" : "#D1D5DB"} />
+                <ChevronRight
+                  size={18}
+                  color={isDark ? "#64748B" : "#D1D5DB"}
+                />
               </View>
             </Pressable>
           );
         })}
       </View>
     );
-  }, [activeChat, colors, errorMessage, handleSendReply, isDark, loading, replyText, rows, sendError, sending]);
+  }, [
+    activeChat,
+    colors,
+    errorMessage,
+    handleSendReply,
+    isDark,
+    loading,
+    replyText,
+    rows,
+    sendError,
+    sending,
+  ]);
 
   if (activeChat) {
     return (
@@ -1054,8 +1249,12 @@ export default function ChatScreen() {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.pageTitle, { color: colors.text }]}>Vendor Chats</Text>
-        <Text style={[styles.pageSubtitle, { color: colors.textSecondary }]}>Messages with couples and clients</Text>
+        <Text style={[styles.pageTitle, { color: colors.text }]}>
+          Vendor Chats
+        </Text>
+        <Text style={[styles.pageSubtitle, { color: colors.textSecondary }]}>
+          Messages with couples and clients
+        </Text>
         {content}
       </ScrollView>
     </View>
@@ -1340,7 +1539,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     overflow: "hidden",
   },
-  offeringBadge: {
+  serviceBadge: {
     alignSelf: "flex-start",
     backgroundColor: "#FFF3EE",
     borderWidth: 1,
@@ -1350,7 +1549,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     maxWidth: "50%",
   },
-  offeringBadgeText: {
+  serviceBadgeText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 10.5,
     color: "#FC7B54",

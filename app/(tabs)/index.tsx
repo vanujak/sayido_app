@@ -422,6 +422,7 @@ const loadReservationNotificationPreviews = async (
 
   const rows = Array.isArray(data.vendorPayments) ? data.vendorPayments : [];
   return rows
+    .filter((item) => toText(item.status).toLowerCase() !== "failed")
     .map((item) => {
       const visitor = (item.visitor as Record<string, unknown> | undefined) || {};
       const pkg = (item.package as Record<string, unknown> | undefined) || {};
@@ -435,14 +436,13 @@ const loadReservationNotificationPreviews = async (
       );
       const packageName = toText(pkg.name, "a package");
       const reservationId = toText(item.id);
-      const status = toText(item.status, "pending").toUpperCase();
 
       return {
         id: `reservation-${reservationId}`,
         type: "reservation" as const,
         reservationId,
         title: "New Booking",
-        message: `${visitorName} booked ${packageName} (${status})`,
+        message: `${visitorName} booked ${packageName}`,
         timestamp: toText(item.createdAt),
       };
     })
@@ -907,7 +907,12 @@ export default function Dashboard() {
       // Load push notifications received via Firebase / Expo
       const inAppList = getInAppNotifications(targetVendorId);
       const unreadInAppPreviews: NotificationPreview[] = inAppList
-        .filter((item) => !item.read)
+        .filter(
+          (item) =>
+            !item.read &&
+            item.data?.status !== "failed" &&
+            !item.body?.toLowerCase().includes("(failed)")
+        )
         .map((item) => {
           const notifType =
             item.data?.type === "chat_message"
@@ -974,10 +979,15 @@ export default function Dashboard() {
     }
   }, [dismissedPreviewReadAt, resolvedVendorId, seenReservationIds, seenApprovalIds, unreadCount, vendorId]);
 
-  const handleNotifications = () => {
-    setNotificationsOpen(true);
-    void refreshNotificationPreviews();
-  };
+  const handleNotifications = useCallback(() => {
+    setNotificationsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        void refreshNotificationPreviews();
+      }
+      return next;
+    });
+  }, [refreshNotificationPreviews]);
 
   const handleOpenChatFromNotification = useCallback(
     (chatId: string) => {
@@ -1198,9 +1208,10 @@ export default function Dashboard() {
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.headerRow}>
-          <View>
+          <View style={styles.headerTitleContainer}>
             <View style={[styles.welcomePill, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.welcomePillText, { color: colors.textSecondary }]}>Welcome back</Text>
             </View>
@@ -1212,13 +1223,14 @@ export default function Dashboard() {
             <TouchableOpacity
               style={[styles.iconButton, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={handleNotifications}
-              activeOpacity={0.85}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityRole="button"
               accessibilityLabel="Notifications"
             >
               <Bell size={20} color={colors.text} />
               {totalNotificationCount > 0 && (
-                <View style={styles.badge}>
+                <View style={styles.badge} pointerEvents="none">
                   <Text style={styles.badgeText}>
                     {totalNotificationCount > 99 ? "99+" : `${totalNotificationCount}`}
                   </Text>
@@ -1316,14 +1328,20 @@ export default function Dashboard() {
         transparent
         visible={notificationsOpen}
         onRequestClose={() => setNotificationsOpen(false)}
+        statusBarTranslucent
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setNotificationsOpen(false)}>
+        <View style={styles.modalBackdrop}>
           <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setNotificationsOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close notifications backdrop"
+          />
+          <View
             style={[
               styles.notificationModal,
               { backgroundColor: colors.cardElevated, borderColor: colors.border },
             ]}
-            onPress={(event) => event.stopPropagation()}
           >
             <View style={styles.notificationHeader}>
               <Text style={[styles.notificationTitle, { color: colors.text }]}>
@@ -1455,8 +1473,8 @@ export default function Dashboard() {
                 <Text style={styles.notificationEmpty}>No unread messages right now.</Text>
               </View>
             )}
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -1478,11 +1496,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12,
+    zIndex: 10,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    marginRight: 12,
+    justifyContent: "center",
   },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    zIndex: 10,
   },
   iconButton: {
     width: 42,
@@ -1498,7 +1523,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 1,
+    elevation: 2,
+    zIndex: 10,
   },
   badge: {
     position: "absolute",
@@ -1717,6 +1743,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E8EDF5",
     padding: 14,
+    elevation: 10,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    zIndex: 20,
   },
   notificationHeader: {
     flexDirection: "row",
