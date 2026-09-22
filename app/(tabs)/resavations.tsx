@@ -1607,11 +1607,7 @@ const styles = StyleSheet.create({
   dayCellToday: {
     borderWidth: 1.5,
     borderColor: "#FC7B54",
-    shadowColor: "#FC7B54",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 5,
-    elevation: 3,
+    backgroundColor: "transparent",
   },
   dayCellSelected: {
     backgroundColor: "#FFE8E1",

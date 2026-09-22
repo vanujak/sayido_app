@@ -1,21 +1,37 @@
+import {
+  DashboardSkeleton,
+  NotificationListSkeleton,
+} from "@/components/ui/skeletons";
+import { useAppTheme } from "@/context/ThemeContext";
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { getChatSocket } from "@/lib/chat-socket";
+import { formatCoupleName } from "@/lib/formatCoupleName";
 import {
-  getNotificationReadState,
-  setNotificationReadState,
   getInAppNotifications,
-  markNotificationAsRead,
+  getNotificationReadState,
   markAllNotificationsAsRead,
+  markNotificationAsRead,
+  setNotificationReadState,
   subscribeToNotifications,
 } from "@/lib/in-app-notifications";
 import { registerForPushNotificationsAsync } from "@/lib/push-notifications";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
-import { formatCoupleName } from "@/lib/formatCoupleName";
 import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
-import { Bell, DollarSign, Eye, Package, Users } from "lucide-react-native";
+import {
+  ArrowRight,
+  Bell,
+  BriefcaseBusiness,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardCheck,
+  DollarSign,
+  Eye,
+  MessageCircle,
+  Package,
+  UserRound,
+  Users,
+} from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DashboardSkeleton, NotificationListSkeleton } from "@/components/ui/skeletons";
-import { useAppTheme } from "@/context/ThemeContext";
 import {
   Alert,
   BackHandler,
@@ -87,6 +103,26 @@ const monthShort = (value: string) => {
 };
 
 const monthFull = (value: string) => {
+  const monthIndex = [
+    "jan",
+    "feb",
+    "mar",
+    "apr",
+    "may",
+    "jun",
+    "jul",
+    "aug",
+    "sep",
+    "oct",
+    "nov",
+    "dec",
+  ].indexOf(value.trim().slice(0, 3).toLowerCase());
+  if (monthIndex >= 0) {
+    return new Date(2000, monthIndex, 1).toLocaleDateString("en-US", {
+      month: "long",
+    });
+  }
+
   const parsedFromDate = new Date(value);
   if (!Number.isNaN(parsedFromDate.getTime())) {
     return parsedFromDate.toLocaleDateString("en-US", { month: "long" });
@@ -161,7 +197,9 @@ const readVendorIdFromCookie = () => {
   if (jwtParts.length < 2) return "";
 
   try {
-    const payload = JSON.parse(atob(jwtParts[1].replace(/-/g, "+").replace(/_/g, "/"))) as {
+    const payload = JSON.parse(
+      atob(jwtParts[1].replace(/-/g, "+").replace(/_/g, "/")),
+    ) as {
       sub?: string;
     };
     return toText(payload.sub);
@@ -225,7 +263,9 @@ const loadVendorProfile = async (
   }
 };
 
-const loadVendorAnalytics = async (vendorId: string): Promise<VendorAnalytics> => {
+const loadVendorAnalytics = async (
+  vendorId: string,
+): Promise<VendorAnalytics> => {
   const data = await graphQlRequest<{
     getVendorAnalytics?: {
       totalUniqueViews?: number;
@@ -277,7 +317,9 @@ const loadVendorAnalytics = async (vendorId: string): Promise<VendorAnalytics> =
   };
 };
 
-const loadVendorPayments = async (vendorId: string): Promise<VendorPayment[]> => {
+const loadVendorPayments = async (
+  vendorId: string,
+): Promise<VendorPayment[]> => {
   const data = await graphQlRequest<{
     vendorPayments?: Array<Record<string, unknown>>;
   }>(
@@ -340,7 +382,9 @@ const getUnreadCountFromSocketPayload = (payload: unknown) => {
   return 0;
 };
 
-const loadNotificationPreviews = async (vendorId: string): Promise<NotificationPreview[]> => {
+const loadNotificationPreviews = async (
+  vendorId: string,
+): Promise<NotificationPreview[]> => {
   const data = await graphQlRequest<{
     getVendorChats?: Array<{
       chatId?: string;
@@ -386,11 +430,16 @@ const loadNotificationPreviews = async (vendorId: string): Promise<NotificationP
         timestamp: toText(latestFromVisitor?.timestamp, toText(chat.updatedAt)),
       };
     })
-    .filter((item) => !!item.chatId && toText(item.senderType).toLowerCase() !== "vendor")
+    .filter(
+      (item) =>
+        !!item.chatId && toText(item.senderType).toLowerCase() !== "vendor",
+    )
     .sort((a, b) => {
       const aDate = new Date(a.timestamp).getTime();
       const bDate = new Date(b.timestamp).getTime();
-      return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+      return (
+        (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate)
+      );
     });
 };
 
@@ -424,7 +473,8 @@ const loadReservationNotificationPreviews = async (
   return rows
     .filter((item) => toText(item.status).toLowerCase() !== "failed")
     .map((item) => {
-      const visitor = (item.visitor as Record<string, unknown> | undefined) || {};
+      const visitor =
+        (item.visitor as Record<string, unknown> | undefined) || {};
       const pkg = (item.package as Record<string, unknown> | undefined) || {};
       const visitorName = formatCoupleName(
         {
@@ -432,7 +482,7 @@ const loadReservationNotificationPreviews = async (
           visitor_lname: toText(visitor.visitor_lname),
           partner_fname: toText(visitor.partner_fname),
         },
-        "A customer"
+        "A customer",
       );
       const packageName = toText(pkg.name, "a package");
       const reservationId = toText(item.id);
@@ -450,7 +500,9 @@ const loadReservationNotificationPreviews = async (
     .sort((a, b) => {
       const aDate = new Date(a.timestamp).getTime();
       const bDate = new Date(b.timestamp).getTime();
-      return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+      return (
+        (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate)
+      );
     });
 };
 
@@ -482,11 +534,14 @@ const loadApprovalNotificationPreviews = async (
       { vendorId },
     );
 
-    const rows = Array.isArray(data.getVendorApprovalRequests) ? data.getVendorApprovalRequests : [];
+    const rows = Array.isArray(data.getVendorApprovalRequests)
+      ? data.getVendorApprovalRequests
+      : [];
     return rows
       .filter((item) => toText(item.status).toLowerCase() === "pending")
       .map((item) => {
-        const visitor = (item.visitor as Record<string, unknown> | undefined) || {};
+        const visitor =
+          (item.visitor as Record<string, unknown> | undefined) || {};
         const pkg = (item.package as Record<string, unknown> | undefined) || {};
         const visitorName = formatCoupleName(
           {
@@ -494,7 +549,7 @@ const loadApprovalNotificationPreviews = async (
             visitor_lname: toText(visitor.visitor_lname),
             partner_fname: toText(visitor.partner_fname),
           },
-          "A couple"
+          "A couple",
         );
         const packageName = toText(pkg.name, "a package");
         const approvalRequestId = toText(item.id);
@@ -513,14 +568,19 @@ const loadApprovalNotificationPreviews = async (
       .sort((a, b) => {
         const aDate = new Date(a.timestamp).getTime();
         const bDate = new Date(b.timestamp).getTime();
-        return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+        return (
+          (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate)
+        );
       });
   } catch {
     return [];
   }
 };
 
-const markChatAsRead = async (chatId: string, userId: string): Promise<void> => {
+const markChatAsRead = async (
+  chatId: string,
+  userId: string,
+): Promise<void> => {
   await graphQlRequest<{
     markChatAsRead?: boolean;
   }>(
@@ -564,7 +624,7 @@ const registerVendorPushToken = async (
 export default function Dashboard() {
   const router = useRouter();
   const { colors, isDark } = useAppTheme();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const vendorSession = getVendorSession();
   const params = useGlobalSearchParams<{
     id?: string;
@@ -588,11 +648,19 @@ export default function Dashboard() {
   const [resolvedVendorId, setResolvedVendorId] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
-  const [notificationPreviews, setNotificationPreviews] = useState<NotificationPreview[]>([]);
+  const [notificationPreviews, setNotificationPreviews] = useState<
+    NotificationPreview[]
+  >([]);
   const [markingReadChatId, setMarkingReadChatId] = useState("");
-  const [dismissedPreviewReadAt, setDismissedPreviewReadAt] = useState<Record<string, number>>({});
-  const [seenReservationIds, setSeenReservationIds] = useState<Record<string, true>>({});
-  const [seenApprovalIds, setSeenApprovalIds] = useState<Record<string, true>>({});
+  const [dismissedPreviewReadAt, setDismissedPreviewReadAt] = useState<
+    Record<string, number>
+  >({});
+  const [seenReservationIds, setSeenReservationIds] = useState<
+    Record<string, true>
+  >({});
+  const [seenApprovalIds, setSeenApprovalIds] = useState<Record<string, true>>(
+    {},
+  );
   const [reservationUnreadCount, setReservationUnreadCount] = useState(0);
   const [approvalUnreadCount, setApprovalUnreadCount] = useState(0);
   const [vendorProfile, setVendorProfile] = useState<{
@@ -601,6 +669,7 @@ export default function Dashboard() {
     busname?: string;
   } | null>(null);
   const isCompactScreen = width < 390;
+  const isShortScreen = height < 760;
   const isWideScreen = width >= 860;
   const metricCardWidth = isWideScreen ? "24%" : "48.6%";
   const totalNotificationCount = notificationPreviews.length;
@@ -616,9 +685,12 @@ export default function Dashboard() {
         BackHandler.exitApp();
         return true;
       };
-      const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        onBackPress,
+      );
       return () => subscription.remove();
-    }, [notificationsOpen])
+    }, [notificationsOpen]),
   );
 
   const vendorId =
@@ -634,19 +706,20 @@ export default function Dashboard() {
     (typeof params.email === "string" && params.email) ||
     vendorSession.email ||
     "";
-  const notificationStateVendorId = resolvedVendorId || vendorId || vendorSession.vendorId || "";
+  const notificationStateVendorId =
+    resolvedVendorId || vendorId || vendorSession.vendorId || "";
 
   const firstName =
-    vendorProfile?.fname?.trim() ||
-    toText(params.fname).trim() ||
-    "";
+    vendorProfile?.fname?.trim() || toText(params.fname).trim() || "";
   const vendorName = firstName || "Vendor";
 
   const loadDashboardData = useCallback(async () => {
     setErrorMessage("");
     try {
       const resolvedVendorId =
-        vendorId || (await loadVendorIdByEmail(vendorEmail)) || readVendorIdFromCookie();
+        vendorId ||
+        (await loadVendorIdByEmail(vendorEmail)) ||
+        readVendorIdFromCookie();
       if (!resolvedVendorId) {
         throw new Error("Could not resolve vendor id for analytics.");
       }
@@ -657,12 +730,13 @@ export default function Dashboard() {
       });
       setResolvedVendorId(resolvedVendorId);
 
-      const [analyticsResult, paymentsResult, unreadResult, profileResult] = await Promise.all([
-        loadVendorAnalytics(resolvedVendorId),
-        loadVendorPayments(resolvedVendorId),
-        loadUnreadMessageCount(resolvedVendorId),
-        loadVendorProfile(resolvedVendorId),
-      ]);
+      const [analyticsResult, paymentsResult, unreadResult, profileResult] =
+        await Promise.all([
+          loadVendorAnalytics(resolvedVendorId),
+          loadVendorPayments(resolvedVendorId),
+          loadUnreadMessageCount(resolvedVendorId),
+          loadVendorProfile(resolvedVendorId),
+        ]);
 
       setAnalytics(analyticsResult);
       setPayments(paymentsResult);
@@ -682,11 +756,17 @@ export default function Dashboard() {
         }
       })();
     } catch (error) {
-      setAnalytics({ totalUniqueViews: 0, packagesAnalytics: [], monthlyViews: [] });
+      setAnalytics({
+        totalUniqueViews: 0,
+        packagesAnalytics: [],
+        monthlyViews: [],
+      });
       setPayments([]);
       setUnreadCount(0);
       setErrorMessage(
-        error instanceof Error ? error.message : "Unable to load dashboard analytics.",
+        error instanceof Error
+          ? error.message
+          : "Unable to load dashboard analytics.",
       );
     } finally {
       setLoading(false);
@@ -705,7 +785,8 @@ export default function Dashboard() {
   }, [notificationStateVendorId]);
 
   useEffect(() => {
-    const socketVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+    const socketVendorId =
+      resolvedVendorId || vendorId || getVendorSession().vendorId || "";
     if (!socketVendorId) return;
 
     const socket = getChatSocket();
@@ -752,7 +833,9 @@ export default function Dashboard() {
       const refreshDashboardSummary = async () => {
         try {
           const resolvedVendorId =
-            vendorId || (await loadVendorIdByEmail(vendorEmail)) || readVendorIdFromCookie();
+            vendorId ||
+            (await loadVendorIdByEmail(vendorEmail)) ||
+            readVendorIdFromCookie();
           if (!resolvedVendorId || !active) return;
           const [nextUnread, nextProfile] = await Promise.all([
             loadUnreadMessageCount(resolvedVendorId),
@@ -785,7 +868,10 @@ export default function Dashboard() {
     [completedPayments],
   );
   const totalBookings = completedPayments.length;
-  const totalPackages = useMemo(() => analytics.packagesAnalytics.length, [analytics.packagesAnalytics]);
+  const totalPackages = useMemo(
+    () => analytics.packagesAnalytics.length,
+    [analytics.packagesAnalytics],
+  );
 
   const revenueByPackage = useMemo(() => {
     return completedPayments.reduce<Record<string, number>>((acc, payment) => {
@@ -806,7 +892,9 @@ export default function Dashboard() {
 
   const topPackage = useMemo(() => {
     if (analytics.packagesAnalytics.length === 0) return null;
-    return [...analytics.packagesAnalytics].sort((a, b) => b.uniqueViews - a.uniqueViews)[0];
+    return [...analytics.packagesAnalytics].sort(
+      (a, b) => b.uniqueViews - a.uniqueViews,
+    )[0];
   }, [analytics.packagesAnalytics]);
 
   const peakMonth = useMemo(() => {
@@ -851,8 +939,61 @@ export default function Dashboard() {
     [analytics.totalUniqueViews, totalBookings, totalPackages, totalRevenue],
   );
 
+  const attentionItems = useMemo(() => {
+    const items: Array<{
+      key: string;
+      label: string;
+      detail: string;
+      count: number;
+      icon: typeof MessageCircle;
+      color: string;
+      onPress: () => void;
+    }> = [];
+
+    if (approvalUnreadCount > 0) {
+      items.push({
+        key: "approvals",
+        label: "Approval requests",
+        detail: "Review couples waiting for a response",
+        count: approvalUnreadCount,
+        icon: ClipboardCheck,
+        color: "#A855F7",
+        onPress: () =>
+          router.push({
+            pathname: "/(tabs)/resavations",
+            params: { tab: "approvals" },
+          }),
+      });
+    }
+    if (unreadCount > 0) {
+      items.push({
+        key: "messages",
+        label: "Unread messages",
+        detail: "Reply to couples to keep bookings moving",
+        count: unreadCount,
+        icon: MessageCircle,
+        color: "#3B82F6",
+        onPress: () => router.push("/(tabs)/chat"),
+      });
+    }
+    if (reservationUnreadCount > 0) {
+      items.push({
+        key: "reservations",
+        label: "New bookings",
+        detail: "Check your latest booking activity",
+        count: reservationUnreadCount,
+        icon: CalendarDays,
+        color: "#F97316",
+        onPress: () => router.push("/(tabs)/resavations"),
+      });
+    }
+
+    return items.slice(0, 2);
+  }, [approvalUnreadCount, reservationUnreadCount, router, unreadCount]);
+
   const refreshNotificationPreviews = useCallback(async () => {
-    const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+    const targetVendorId =
+      resolvedVendorId || vendorId || getVendorSession().vendorId || "";
     if (!targetVendorId) {
       setNotificationPreviews([]);
       setReservationUnreadCount(0);
@@ -863,22 +1004,36 @@ export default function Dashboard() {
     setNotificationsLoading(true);
     try {
       const currentReadState = getNotificationReadState(targetVendorId);
-      const currentSeenReservations = { ...seenReservationIds, ...currentReadState.seenReservationIds };
-      const currentSeenApprovals = { ...seenApprovalIds, ...(currentReadState.seenApprovalIds || {}) };
-      const currentDismissedPreview = { ...dismissedPreviewReadAt, ...currentReadState.dismissedPreviewReadAt };
+      const currentSeenReservations = {
+        ...seenReservationIds,
+        ...currentReadState.seenReservationIds,
+      };
+      const currentSeenApprovals = {
+        ...seenApprovalIds,
+        ...(currentReadState.seenApprovalIds || {}),
+      };
+      const currentDismissedPreview = {
+        ...dismissedPreviewReadAt,
+        ...currentReadState.dismissedPreviewReadAt,
+      };
 
-      const [chatResult, reservationResult, approvalResult, unreadResult] = await Promise.allSettled([
-        loadNotificationPreviews(targetVendorId),
-        loadReservationNotificationPreviews(targetVendorId),
-        loadApprovalNotificationPreviews(targetVendorId),
-        loadUnreadMessageCount(targetVendorId),
-      ]);
-      const chatPreviews = chatResult.status === "fulfilled" ? chatResult.value : [];
+      const [chatResult, reservationResult, approvalResult, unreadResult] =
+        await Promise.allSettled([
+          loadNotificationPreviews(targetVendorId),
+          loadReservationNotificationPreviews(targetVendorId),
+          loadApprovalNotificationPreviews(targetVendorId),
+          loadUnreadMessageCount(targetVendorId),
+        ]);
+      const chatPreviews =
+        chatResult.status === "fulfilled" ? chatResult.value : [];
       const reservationPreviews =
         reservationResult.status === "fulfilled" ? reservationResult.value : [];
       const approvalPreviews =
         approvalResult.status === "fulfilled" ? approvalResult.value : [];
-      const latestUnreadCount = unreadResult.status === "fulfilled" ? toNumber(unreadResult.value) : unreadCount;
+      const latestUnreadCount =
+        unreadResult.status === "fulfilled"
+          ? toNumber(unreadResult.value)
+          : unreadCount;
 
       const filteredChatPreviews =
         latestUnreadCount > 0
@@ -911,24 +1066,28 @@ export default function Dashboard() {
           (item) =>
             !item.read &&
             item.data?.status !== "failed" &&
-            !item.body?.toLowerCase().includes("(failed)")
+            !item.body?.toLowerCase().includes("(failed)"),
         )
         .map((item) => {
           const notifType =
             item.data?.type === "chat_message"
               ? ("chat" as const)
               : item.data?.type === "package_approval_request"
-              ? ("approval" as const)
-              : item.data?.type === "package_purchase"
-              ? ("reservation" as const)
-              : ("chat" as const);
+                ? ("approval" as const)
+                : item.data?.type === "package_purchase"
+                  ? ("reservation" as const)
+                  : ("chat" as const);
           return {
             id: item.id,
             inAppNotificationId: item.id,
             type: notifType,
             chatId: toText(item.data?.chatId),
-            reservationId: toText(item.data?.paymentId || item.data?.reservationId),
-            approvalRequestId: toText(item.data?.requestId || item.data?.approvalRequestId),
+            reservationId: toText(
+              item.data?.paymentId || item.data?.reservationId,
+            ),
+            approvalRequestId: toText(
+              item.data?.requestId || item.data?.approvalRequestId,
+            ),
             title: item.title,
             message: item.body,
             timestamp: item.receivedAt,
@@ -948,12 +1107,12 @@ export default function Dashboard() {
         const dedupeKey = item.inAppNotificationId
           ? `inapp-${item.inAppNotificationId}`
           : item.reservationId
-          ? `reservation-${item.reservationId}`
-          : item.approvalRequestId
-          ? `approval-${item.approvalRequestId}`
-          : item.chatId
-          ? `chat-${item.chatId}`
-          : item.id;
+            ? `reservation-${item.reservationId}`
+            : item.approvalRequestId
+              ? `approval-${item.approvalRequestId}`
+              : item.chatId
+                ? `chat-${item.chatId}`
+                : item.id;
 
         if (!seenKeys.has(dedupeKey)) {
           seenKeys.add(dedupeKey);
@@ -964,7 +1123,9 @@ export default function Dashboard() {
       combined.sort((a, b) => {
         const aDate = new Date(a.timestamp).getTime();
         const bDate = new Date(b.timestamp).getTime();
-        return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+        return (
+          (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate)
+        );
       });
 
       setReservationUnreadCount(filteredReservationPreviews.length);
@@ -977,7 +1138,14 @@ export default function Dashboard() {
     } finally {
       setNotificationsLoading(false);
     }
-  }, [dismissedPreviewReadAt, resolvedVendorId, seenReservationIds, seenApprovalIds, unreadCount, vendorId]);
+  }, [
+    dismissedPreviewReadAt,
+    resolvedVendorId,
+    seenReservationIds,
+    seenApprovalIds,
+    unreadCount,
+    vendorId,
+  ]);
 
   const handleNotifications = useCallback(() => {
     setNotificationsOpen((prev) => {
@@ -1002,7 +1170,8 @@ export default function Dashboard() {
 
   const handleMarkAsRead = useCallback(
     async (chatId: string, timestamp: string, inAppNotificationId?: string) => {
-      const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+      const targetVendorId =
+        resolvedVendorId || vendorId || getVendorSession().vendorId || "";
       if (!targetVendorId) return;
 
       if (inAppNotificationId) {
@@ -1030,7 +1199,8 @@ export default function Dashboard() {
             (item) =>
               !(
                 (item.type === "chat" && item.chatId === chatId) ||
-                (inAppNotificationId && item.inAppNotificationId === inAppNotificationId)
+                (inAppNotificationId &&
+                  item.inAppNotificationId === inAppNotificationId)
               ),
           ),
         );
@@ -1047,7 +1217,8 @@ export default function Dashboard() {
   const handleMarkReservationSeen = useCallback(
     (reservationId: string, inAppNotificationId?: string) => {
       if (!reservationId && !inAppNotificationId) return;
-      const targetVendorId = notificationStateVendorId || getVendorSession().vendorId || "";
+      const targetVendorId =
+        notificationStateVendorId || getVendorSession().vendorId || "";
 
       if (inAppNotificationId && targetVendorId) {
         markNotificationAsRead(targetVendorId, inAppNotificationId);
@@ -1072,8 +1243,10 @@ export default function Dashboard() {
         current.filter(
           (item) =>
             !(
-              (item.type === "reservation" && item.reservationId === reservationId) ||
-              (inAppNotificationId && item.inAppNotificationId === inAppNotificationId)
+              (item.type === "reservation" &&
+                item.reservationId === reservationId) ||
+              (inAppNotificationId &&
+                item.inAppNotificationId === inAppNotificationId)
             ),
         ),
       );
@@ -1084,7 +1257,8 @@ export default function Dashboard() {
   const handleMarkApprovalSeen = useCallback(
     (approvalRequestId: string, inAppNotificationId?: string) => {
       if (!approvalRequestId && !inAppNotificationId) return;
-      const targetVendorId = notificationStateVendorId || getVendorSession().vendorId || "";
+      const targetVendorId =
+        notificationStateVendorId || getVendorSession().vendorId || "";
 
       if (inAppNotificationId && targetVendorId) {
         markNotificationAsRead(targetVendorId, inAppNotificationId);
@@ -1109,8 +1283,10 @@ export default function Dashboard() {
         current.filter(
           (item) =>
             !(
-              (item.type === "approval" && item.approvalRequestId === approvalRequestId) ||
-              (inAppNotificationId && item.inAppNotificationId === inAppNotificationId)
+              (item.type === "approval" &&
+                item.approvalRequestId === approvalRequestId) ||
+              (inAppNotificationId &&
+                item.inAppNotificationId === inAppNotificationId)
             ),
         ),
       );
@@ -1119,15 +1295,20 @@ export default function Dashboard() {
   );
 
   const handleMarkAllRead = useCallback(() => {
-    const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+    const targetVendorId =
+      resolvedVendorId || vendorId || getVendorSession().vendorId || "";
     if (!targetVendorId) return;
 
     markAllNotificationsAsRead(targetVendorId);
 
     const now = Date.now();
-    const nextSeenReservations: Record<string, true> = { ...seenReservationIds };
+    const nextSeenReservations: Record<string, true> = {
+      ...seenReservationIds,
+    };
     const nextSeenApprovals: Record<string, true> = { ...seenApprovalIds };
-    const nextDismissedChat: Record<string, number> = { ...dismissedPreviewReadAt };
+    const nextDismissedChat: Record<string, number> = {
+      ...dismissedPreviewReadAt,
+    };
 
     notificationPreviews.forEach((item) => {
       if (item.reservationId) {
@@ -1154,7 +1335,14 @@ export default function Dashboard() {
     setUnreadCount(0);
     setReservationUnreadCount(0);
     setApprovalUnreadCount(0);
-  }, [dismissedPreviewReadAt, notificationPreviews, resolvedVendorId, seenApprovalIds, seenReservationIds, vendorId]);
+  }, [
+    dismissedPreviewReadAt,
+    notificationPreviews,
+    resolvedVendorId,
+    seenApprovalIds,
+    seenReservationIds,
+    vendorId,
+  ]);
 
   useEffect(() => {
     if (!notificationsOpen) return;
@@ -1162,7 +1350,8 @@ export default function Dashboard() {
   }, [notificationsOpen, unreadCount, refreshNotificationPreviews]);
 
   useEffect(() => {
-    const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+    const targetVendorId =
+      resolvedVendorId || vendorId || getVendorSession().vendorId || "";
     if (!targetVendorId) return;
 
     void refreshNotificationPreviews();
@@ -1175,7 +1364,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     const unsubscribe = subscribeToNotifications(() => {
-      const targetVendorId = resolvedVendorId || vendorId || getVendorSession().vendorId || "";
+      const targetVendorId =
+        resolvedVendorId || vendorId || getVendorSession().vendorId || "";
       if (targetVendorId) {
         const readState = getNotificationReadState(targetVendorId);
         setDismissedPreviewReadAt(readState.dismissedPreviewReadAt);
@@ -1196,7 +1386,11 @@ export default function Dashboard() {
       <View style={styles.centerState}>
         <Text style={styles.errorTitle}>Could not load dashboard</Text>
         <Text style={styles.errorText}>{errorMessage}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadDashboardData} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={loadDashboardData}
+          activeOpacity={0.85}
+        >
           <Text style={styles.retryText}>Try Again</Text>
         </TouchableOpacity>
       </View>
@@ -1205,23 +1399,37 @@ export default function Dashboard() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
+      <View style={[styles.container, isShortScreen && styles.containerShort]}>
         <View style={styles.headerRow}>
           <View style={styles.headerTitleContainer}>
-            <View style={[styles.welcomePill, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.welcomePillText, { color: colors.textSecondary }]}>Welcome back</Text>
+            <View
+              style={[
+                styles.welcomePill,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.welcomePillText,
+                  { color: colors.textSecondary },
+                ]}
+              >
+                Welcome back
+              </Text>
             </View>
-            <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
+            <Text
+              style={[styles.name, { color: colors.text }]}
+              numberOfLines={1}
+            >
               {vendorName}
             </Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[
+                styles.iconButton,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
               onPress={handleNotifications}
               activeOpacity={0.7}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -1232,7 +1440,9 @@ export default function Dashboard() {
               {totalNotificationCount > 0 && (
                 <View style={styles.badge} pointerEvents="none">
                   <Text style={styles.badgeText}>
-                    {totalNotificationCount > 99 ? "99+" : `${totalNotificationCount}`}
+                    {totalNotificationCount > 99
+                      ? "99+"
+                      : `${totalNotificationCount}`}
                   </Text>
                 </View>
               )}
@@ -1255,20 +1465,30 @@ export default function Dashboard() {
                   styles.metricCard,
                   {
                     width: metricCardWidth,
-                    minHeight: isCompactScreen ? 134 : 144,
+                    minHeight: isShortScreen ? 90 : isCompactScreen ? 104 : 116,
                     backgroundColor: colors.card,
                     borderColor: colors.border,
                   },
                 ]}
               >
                 <View style={styles.metricHeader}>
-                  <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>{card.label}</Text>
+                  <Text
+                    style={[
+                      styles.metricLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {card.label}
+                  </Text>
                   <Icon size={20} color={card.iconColor} strokeWidth={2.1} />
                 </View>
                 {isRevenueCard ? (
                   <View style={styles.revenueValueBlock}>
                     <Text
-                      style={[styles.revenueCurrency, { color: colors.textSecondary }]}
+                      style={[
+                        styles.revenueCurrency,
+                        { color: colors.textSecondary },
+                      ]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
                       minimumFontScale={0.65}
@@ -1285,7 +1505,9 @@ export default function Dashboard() {
                     </Text>
                   </View>
                 ) : (
-                  <Text style={[styles.metricValue, { color: colors.text }]}>{card.value}</Text>
+                  <Text style={[styles.metricValue, { color: colors.text }]}>
+                    {card.value}
+                  </Text>
                 )}
               </View>
             );
@@ -1293,20 +1515,34 @@ export default function Dashboard() {
         </View>
 
         <View style={styles.insightRow}>
-          <View style={[styles.insightCard, { backgroundColor: colors.insightCardBg }]}>
+          <View
+            style={[
+              styles.insightCard,
+              { backgroundColor: colors.insightCardBg },
+            ]}
+          >
             <Text style={styles.insightTitle}>Top Package</Text>
             <Text style={styles.insightValue} numberOfLines={1}>
               {topPackage?.packageName || "No data"}
             </Text>
             <Text style={styles.insightMeta}>
-              {topPackage ? `${topPackage.uniqueViews} views` : "Track views to unlock"}
+              {topPackage
+                ? `${topPackage.uniqueViews} views`
+                : "Track views to unlock"}
             </Text>
             <Text style={styles.insightRevenue}>
-              {topPackage ? formatCurrency(revenueByPackage[topPackage.packageId] || 0) : formatCurrency(0)}
+              {topPackage
+                ? formatCurrency(revenueByPackage[topPackage.packageId] || 0)
+                : formatCurrency(0)}
             </Text>
           </View>
 
-          <View style={[styles.insightCard, { backgroundColor: colors.insightCardBg }]}>
+          <View
+            style={[
+              styles.insightCard,
+              { backgroundColor: colors.insightCardBg },
+            ]}
+          >
             <Text style={styles.insightTitle}>Peak Month</Text>
             <Text style={styles.insightValue}>
               {peakMonth ? monthFull(peakMonth.month) : "--"}
@@ -1317,11 +1553,180 @@ export default function Dashboard() {
                 : "No monthly data"}
             </Text>
             <Text style={styles.insightRevenue}>
-              {peakMonth ? formatCurrency(revenueByMonth[peakMonth.month] || 0) : formatCurrency(0)}
+              {peakMonth
+                ? formatCurrency(revenueByMonth[peakMonth.month] || 0)
+                : formatCurrency(0)}
             </Text>
           </View>
         </View>
-      </ScrollView>
+
+        <View
+          style={[
+            styles.attentionCard,
+            {
+              backgroundColor: isDark ? colors.card : "#FFFFFF",
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <View style={styles.attentionHeader}>
+            <View style={styles.attentionTitleRow}>
+              <View
+                style={[
+                  styles.attentionIcon,
+                  {
+                    backgroundColor: isDark
+                      ? "rgba(252, 123, 84, 0.16)"
+                      : "#FFF0EA",
+                  },
+                ]}
+              >
+                {attentionItems.length > 0 ? (
+                  <Bell size={16} color={colors.primary} />
+                ) : (
+                  <CheckCircle2 size={16} color="#10B981" />
+                )}
+              </View>
+              <View>
+                <Text style={[styles.attentionTitle, { color: colors.text }]}>
+                  Needs attention
+                </Text>
+                <Text
+                  style={[
+                    styles.attentionSubtitle,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  Your next best actions
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.attentionCount, { color: colors.textMuted }]}>
+              {attentionItems.reduce((sum, item) => sum + item.count, 0)}
+            </Text>
+          </View>
+
+          {attentionItems.length > 0 ? (
+            <View style={styles.attentionList}>
+              {attentionItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={[
+                      styles.attentionItem,
+                      { borderTopColor: colors.border },
+                    ]}
+                    onPress={item.onPress}
+                    activeOpacity={0.75}
+                  >
+                    <Icon size={17} color={item.color} strokeWidth={2.2} />
+                    <View style={styles.attentionItemText}>
+                      <Text
+                        style={[
+                          styles.attentionItemLabel,
+                          { color: colors.text },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.attentionItemDetail,
+                          { color: colors.textSecondary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.detail}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.attentionItemCount,
+                        {
+                          backgroundColor: isDark
+                            ? colors.cardSubtle
+                            : "#F3F4F6",
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.attentionItemCountText,
+                          { color: colors.text },
+                        ]}
+                      >
+                        {item.count}
+                      </Text>
+                    </View>
+                    <ArrowRight size={16} color={colors.textMuted} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <Text
+              style={[styles.attentionEmpty, { color: colors.textSecondary }]}
+            >
+              You are all caught up.
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.quickActionsRow}>
+          {[
+            {
+              key: "bookings",
+              label: "Bookings",
+              icon: CalendarDays,
+              onPress: () => router.push("/(tabs)/resavations"),
+            },
+            {
+              key: "chat",
+              label: "Messages",
+              icon: MessageCircle,
+              onPress: () => router.push("/(tabs)/chat"),
+            },
+            {
+              key: "services",
+              label: "Services",
+              icon: BriefcaseBusiness,
+              onPress: () => router.push("/(tabs)/explore"),
+            },
+            {
+              key: "profile",
+              label: "Profile",
+              icon: UserRound,
+              onPress: () => router.push("/(tabs)/profile"),
+            },
+          ].map((action) => {
+            const Icon = action.icon;
+            return (
+              <TouchableOpacity
+                key={action.key}
+                style={[
+                  styles.quickAction,
+                  {
+                    backgroundColor: isDark ? colors.card : "#FFFFFF",
+                    borderColor: colors.border,
+                  },
+                ]}
+                onPress={action.onPress}
+                activeOpacity={0.75}
+              >
+                <Icon size={18} color={colors.primary} strokeWidth={2.2} />
+                <Text
+                  style={[styles.quickActionLabel, { color: colors.text }]}
+                  numberOfLines={1}
+                >
+                  {action.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
 
       <Modal
         animationType="fade"
@@ -1340,7 +1745,10 @@ export default function Dashboard() {
           <View
             style={[
               styles.notificationModal,
-              { backgroundColor: colors.cardElevated, borderColor: colors.border },
+              {
+                backgroundColor: colors.cardElevated,
+                borderColor: colors.border,
+              },
             ]}
           >
             <View style={styles.notificationHeader}>
@@ -1352,12 +1760,27 @@ export default function Dashboard() {
               </Text>
               <View style={styles.notificationHeaderActions}>
                 {totalNotificationCount > 0 && (
-                  <TouchableOpacity onPress={handleMarkAllRead} activeOpacity={0.8}>
-                    <Text style={styles.notificationMarkAll}>Mark all read</Text>
+                  <TouchableOpacity
+                    onPress={handleMarkAllRead}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.notificationMarkAll}>
+                      Mark all read
+                    </Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={() => setNotificationsOpen(false)} activeOpacity={0.8}>
-                  <Text style={[styles.notificationClose, { color: colors.primary }]}>Close</Text>
+                <TouchableOpacity
+                  onPress={() => setNotificationsOpen(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.notificationClose,
+                      { color: colors.primary },
+                    ]}
+                  >
+                    Close
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1365,11 +1788,15 @@ export default function Dashboard() {
             {notificationsLoading ? (
               <NotificationListSkeleton />
             ) : notificationPreviews.length ? (
-              <ScrollView style={styles.notificationList} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.notificationList}
+                showsVerticalScrollIndicator={false}
+              >
                 {notificationPreviews.map((item) => {
                   const isChat = item.type === "chat";
                   const isApproval = item.type === "approval";
-                  const fromVisitor = toText(item.senderType).toLowerCase() !== "vendor";
+                  const fromVisitor =
+                    toText(item.senderType).toLowerCase() !== "vendor";
                   return (
                     <View
                       key={`${item.id}-${item.timestamp}`}
@@ -1381,14 +1808,29 @@ export default function Dashboard() {
                         },
                       ]}
                     >
-                      <Text style={[styles.notificationItemTitle, { color: colors.text }]}>{item.title}</Text>
                       <Text
-                        style={[styles.notificationItemMessage, { color: colors.textSecondary }]}
+                        style={[
+                          styles.notificationItemTitle,
+                          { color: colors.text },
+                        ]}
+                      >
+                        {item.title}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.notificationItemMessage,
+                          { color: colors.textSecondary },
+                        ]}
                         numberOfLines={2}
                       >
                         {item.message}
                       </Text>
-                      <Text style={[styles.notificationItemTime, { color: colors.textMuted }]}>
+                      <Text
+                        style={[
+                          styles.notificationItemTime,
+                          { color: colors.textMuted },
+                        ]}
+                      >
                         {formatNotificationTime(item.timestamp)}
                       </Text>
                       <View style={styles.notificationActions}>
@@ -1396,13 +1838,26 @@ export default function Dashboard() {
                           style={styles.notificationOpenButton}
                           onPress={() => {
                             if (item.chatId) {
-                              void handleMarkAsRead(item.chatId, item.timestamp, item.inAppNotificationId);
+                              void handleMarkAsRead(
+                                item.chatId,
+                                item.timestamp,
+                                item.inAppNotificationId,
+                              );
                               handleOpenChatFromNotification(item.chatId);
                             } else if (isApproval) {
                               if (item.approvalRequestId) {
-                                handleMarkApprovalSeen(item.approvalRequestId, item.inAppNotificationId);
-                              } else if (item.inAppNotificationId && notificationStateVendorId) {
-                                markNotificationAsRead(notificationStateVendorId, item.inAppNotificationId);
+                                handleMarkApprovalSeen(
+                                  item.approvalRequestId,
+                                  item.inAppNotificationId,
+                                );
+                              } else if (
+                                item.inAppNotificationId &&
+                                notificationStateVendorId
+                              ) {
+                                markNotificationAsRead(
+                                  notificationStateVendorId,
+                                  item.inAppNotificationId,
+                                );
                               }
                               setNotificationsOpen(false);
                               router.push({
@@ -1411,9 +1866,18 @@ export default function Dashboard() {
                               });
                             } else {
                               if (item.reservationId) {
-                                handleMarkReservationSeen(item.reservationId, item.inAppNotificationId);
-                              } else if (item.inAppNotificationId && notificationStateVendorId) {
-                                markNotificationAsRead(notificationStateVendorId, item.inAppNotificationId);
+                                handleMarkReservationSeen(
+                                  item.reservationId,
+                                  item.inAppNotificationId,
+                                );
+                              } else if (
+                                item.inAppNotificationId &&
+                                notificationStateVendorId
+                              ) {
+                                markNotificationAsRead(
+                                  notificationStateVendorId,
+                                  item.inAppNotificationId,
+                                );
                               }
                               setNotificationsOpen(false);
                               router.push("/(tabs)/resavations");
@@ -1425,8 +1889,8 @@ export default function Dashboard() {
                             {isChat
                               ? "Open Chat"
                               : isApproval
-                              ? "Review Request"
-                              : "Open Reservations"}
+                                ? "Review Request"
+                                : "Open Reservations"}
                           </Text>
                         </TouchableOpacity>
                         {isChat && fromVisitor && item.chatId && (
@@ -1436,33 +1900,59 @@ export default function Dashboard() {
                               markingReadChatId === item.chatId &&
                                 styles.notificationReadButtonDisabled,
                             ]}
-                            onPress={() => handleMarkAsRead(item.chatId!, item.timestamp, item.inAppNotificationId)}
+                            onPress={() =>
+                              handleMarkAsRead(
+                                item.chatId!,
+                                item.timestamp,
+                                item.inAppNotificationId,
+                              )
+                            }
                             activeOpacity={0.85}
                             disabled={markingReadChatId === item.chatId}
                           >
                             <Text style={styles.notificationReadText}>
-                              {markingReadChatId === item.chatId ? "Marking..." : "Mark as read"}
+                              {markingReadChatId === item.chatId
+                                ? "Marking..."
+                                : "Mark as read"}
                             </Text>
                           </TouchableOpacity>
                         )}
-                        {!isChat && !isApproval && (item.reservationId || item.inAppNotificationId) && (
-                          <TouchableOpacity
-                            style={styles.notificationReadButton}
-                            onPress={() => handleMarkReservationSeen(item.reservationId || "", item.inAppNotificationId)}
-                            activeOpacity={0.85}
-                          >
-                            <Text style={styles.notificationReadText}>Mark as read</Text>
-                          </TouchableOpacity>
-                        )}
-                        {isApproval && (item.approvalRequestId || item.inAppNotificationId) && (
-                          <TouchableOpacity
-                            style={styles.notificationReadButton}
-                            onPress={() => handleMarkApprovalSeen(item.approvalRequestId || "", item.inAppNotificationId)}
-                            activeOpacity={0.85}
-                          >
-                            <Text style={styles.notificationReadText}>Mark as read</Text>
-                          </TouchableOpacity>
-                        )}
+                        {!isChat &&
+                          !isApproval &&
+                          (item.reservationId || item.inAppNotificationId) && (
+                            <TouchableOpacity
+                              style={styles.notificationReadButton}
+                              onPress={() =>
+                                handleMarkReservationSeen(
+                                  item.reservationId || "",
+                                  item.inAppNotificationId,
+                                )
+                              }
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.notificationReadText}>
+                                Mark as read
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        {isApproval &&
+                          (item.approvalRequestId ||
+                            item.inAppNotificationId) && (
+                            <TouchableOpacity
+                              style={styles.notificationReadButton}
+                              onPress={() =>
+                                handleMarkApprovalSeen(
+                                  item.approvalRequestId || "",
+                                  item.inAppNotificationId,
+                                )
+                              }
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.notificationReadText}>
+                                Mark as read
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                       </View>
                     </View>
                   );
@@ -1470,7 +1960,9 @@ export default function Dashboard() {
               </ScrollView>
             ) : (
               <View style={styles.notificationState}>
-                <Text style={styles.notificationEmpty}>No unread messages right now.</Text>
+                <Text style={styles.notificationEmpty}>
+                  No unread messages right now.
+                </Text>
               </View>
             )}
           </View>
@@ -1486,16 +1978,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF8F3",
   },
   container: {
-    flexGrow: 1,
+    flex: 1,
     paddingHorizontal: 18,
     paddingTop: Platform.OS === "web" ? 24 : 12,
-    paddingBottom: 14,
+    paddingBottom: 8,
+  },
+  containerShort: {
+    paddingTop: 6,
+    paddingBottom: 4,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    marginBottom: 8,
     zIndex: 10,
   },
   headerTitleContainer: {
@@ -1576,8 +2072,8 @@ const styles = StyleSheet.create({
   },
   name: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 38,
-    lineHeight: 42,
+    fontSize: 34,
+    lineHeight: 37,
     color: "#1A2438",
     letterSpacing: 0.2,
     maxWidth: 240,
@@ -1586,18 +2082,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 6,
   },
   metricCard: {
     width: "48.6%",
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 16,
+    padding: 12,
     borderWidth: 1,
     borderColor: "#E8EDF5",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 10,
+    marginBottom: 6,
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.05,
@@ -1612,16 +2108,16 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 16,
     color: "#607089",
   },
   metricValue: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 42,
-    lineHeight: 46,
+    fontSize: 36,
+    lineHeight: 40,
     color: "#0F2342",
-    marginTop: 12,
+    marginTop: 6,
   },
   metricValueSmall: {
     fontFamily: "Outfit_700Bold",
@@ -1631,20 +2127,20 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   revenueValueBlock: {
-    marginTop: 8,
+    marginTop: 4,
     width: "100%",
   },
   revenueCurrency: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 22,
-    lineHeight: 24,
+    fontSize: 18,
+    lineHeight: 20,
     color: "#607089",
     includeFontPadding: false,
   },
   revenueAmount: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 36,
-    lineHeight: 38,
+    fontSize: 31,
+    lineHeight: 33,
     color: "#0F2342",
     marginTop: 2,
     includeFontPadding: false,
@@ -1653,15 +2149,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 10,
-    marginBottom: 18,
+    marginBottom: 7,
   },
   insightCard: {
     width: "48.6%",
     backgroundColor: "#1C2A43",
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 16,
+    padding: 11,
     justifyContent: "space-between",
-    minHeight: 130,
+    minHeight: 91,
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.1,
@@ -1670,26 +2166,125 @@ const styles = StyleSheet.create({
   },
   insightTitle: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
+    fontSize: 11,
     color: "#AFC2E3",
   },
   insightValue: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 20,
+    fontSize: 17,
     color: "#FFFFFF",
     marginTop: 2,
   },
   insightMeta: {
     fontFamily: "Montserrat_400Regular",
-    fontSize: 12,
+    fontSize: 10,
     color: "#C4D3EC",
     marginTop: 2,
   },
   insightRevenue: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 18,
+    fontSize: 15,
     color: "#FCB08A",
     marginTop: 6,
+  },
+  attentionCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  attentionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  attentionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  attentionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attentionTitle: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 15,
+  },
+  attentionSubtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 10,
+    marginTop: 1,
+  },
+  attentionCount: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 18,
+  },
+  attentionList: {
+    marginTop: 5,
+  },
+  attentionItem: {
+    minHeight: 34,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 5,
+  },
+  attentionItemText: {
+    flex: 1,
+  },
+  attentionItemLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+  },
+  attentionItemDetail: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 9,
+    marginTop: 1,
+  },
+  attentionItemCount: {
+    minWidth: 23,
+    height: 23,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  attentionItemCountText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+  },
+  attentionEmpty: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    marginTop: 5,
+  },
+  quickActionsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+  quickAction: {
+    flex: 1,
+    minHeight: 54,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  quickActionLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 9,
   },
   centerState: {
     flex: 1,
