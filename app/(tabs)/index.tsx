@@ -17,20 +17,7 @@ import {
 import { registerForPushNotificationsAsync } from "@/lib/push-notifications";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
-import {
-  ArrowRight,
-  Bell,
-  BriefcaseBusiness,
-  CalendarDays,
-  CheckCircle2,
-  ClipboardCheck,
-  DollarSign,
-  Eye,
-  MessageCircle,
-  Package,
-  UserRound,
-  Users,
-} from "lucide-react-native";
+import { Bell, DollarSign, Eye, Package, Users } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -939,57 +926,55 @@ export default function Dashboard() {
     [analytics.totalUniqueViews, totalBookings, totalPackages, totalRevenue],
   );
 
-  const attentionItems = useMemo(() => {
-    const items: Array<{
-      key: string;
-      label: string;
-      detail: string;
-      count: number;
-      icon: typeof MessageCircle;
-      color: string;
-      onPress: () => void;
-    }> = [];
+  const monthViewTrend = useMemo(() => {
+    const labelMap = new Map<string, number>();
+    analytics.monthlyViews.forEach((item) => {
+      const monthLabel = monthFull(item.month).slice(0, 3);
+      labelMap.set(monthLabel, item.views);
+    });
 
-    if (approvalUnreadCount > 0) {
-      items.push({
-        key: "approvals",
-        label: "Approval requests",
-        detail: "Review couples waiting for a response",
-        count: approvalUnreadCount,
-        icon: ClipboardCheck,
-        color: "#A855F7",
-        onPress: () =>
-          router.push({
-            pathname: "/(tabs)/resavations",
-            params: { tab: "approvals" },
-          }),
-      });
-    }
-    if (unreadCount > 0) {
-      items.push({
-        key: "messages",
-        label: "Unread messages",
-        detail: "Reply to couples to keep bookings moving",
-        count: unreadCount,
-        icon: MessageCircle,
-        color: "#3B82F6",
-        onPress: () => router.push("/(tabs)/chat"),
-      });
-    }
-    if (reservationUnreadCount > 0) {
-      items.push({
-        key: "reservations",
-        label: "New bookings",
-        detail: "Check your latest booking activity",
-        count: reservationUnreadCount,
-        icon: CalendarDays,
-        color: "#F97316",
-        onPress: () => router.push("/(tabs)/resavations"),
-      });
-    }
+    const monthNames = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (5 - index));
+      return date.toLocaleDateString("en-US", { month: "short" });
+    });
 
-    return items.slice(0, 2);
-  }, [approvalUnreadCount, reservationUnreadCount, router, unreadCount]);
+    const values = monthNames.map((label) => labelMap.get(label) ?? 0);
+    const maxValue = Math.max(...values, 1);
+
+    return {
+      labels: monthNames,
+      values,
+      maxValue,
+    };
+  }, [analytics.monthlyViews]);
+
+  const revenueTrend = useMemo(() => {
+    const labelMap = new Map<string, number>();
+    completedPayments.forEach((payment) => {
+      const monthLabel = monthShort(payment.createdAt);
+      if (!monthLabel) return;
+      labelMap.set(
+        monthLabel,
+        (labelMap.get(monthLabel) ?? 0) + payment.amount,
+      );
+    });
+
+    const monthNames = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (5 - index));
+      return date.toLocaleDateString("en-US", { month: "short" });
+    });
+
+    const values = monthNames.map((label) => labelMap.get(label) ?? 0);
+    const maxValue = Math.max(...values, 1);
+
+    return {
+      labels: monthNames,
+      values,
+      maxValue,
+    };
+  }, [completedPayments]);
 
   const refreshNotificationPreviews = useCallback(async () => {
     const targetVendorId =
@@ -1560,171 +1545,88 @@ export default function Dashboard() {
           </View>
         </View>
 
-        <View
-          style={[
-            styles.attentionCard,
-            {
-              backgroundColor: isDark ? colors.card : "#FFFFFF",
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <View style={styles.attentionHeader}>
-            <View style={styles.attentionTitleRow}>
-              <View
-                style={[
-                  styles.attentionIcon,
-                  {
-                    backgroundColor: isDark
-                      ? "rgba(252, 123, 84, 0.16)"
-                      : "#FFF0EA",
-                  },
-                ]}
-              >
-                {attentionItems.length > 0 ? (
-                  <Bell size={16} color={colors.primary} />
-                ) : (
-                  <CheckCircle2 size={16} color="#10B981" />
-                )}
-              </View>
-              <View>
-                <Text style={[styles.attentionTitle, { color: colors.text }]}>
-                  Needs attention
-                </Text>
-                <Text
-                  style={[
-                    styles.attentionSubtitle,
-                    { color: colors.textSecondary },
-                  ]}
-                >
-                  Your next best actions
-                </Text>
-              </View>
-            </View>
-            <Text style={[styles.attentionCount, { color: colors.textMuted }]}>
-              {attentionItems.reduce((sum, item) => sum + item.count, 0)}
+        <View style={styles.chartGrid}>
+          <View
+            style={[
+              styles.chartCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.chartTitle, { color: colors.textSecondary }]}>
+              Views trend
             </Text>
-          </View>
-
-          {attentionItems.length > 0 ? (
-            <View style={styles.attentionList}>
-              {attentionItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <TouchableOpacity
-                    key={item.key}
-                    style={[
-                      styles.attentionItem,
-                      { borderTopColor: colors.border },
-                    ]}
-                    onPress={item.onPress}
-                    activeOpacity={0.75}
-                  >
-                    <Icon size={17} color={item.color} strokeWidth={2.2} />
-                    <View style={styles.attentionItemText}>
-                      <Text
-                        style={[
-                          styles.attentionItemLabel,
-                          { color: colors.text },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {item.label}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.attentionItemDetail,
-                          { color: colors.textSecondary },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {item.detail}
-                      </Text>
-                    </View>
+            <View style={styles.chartBars}>
+              {monthViewTrend.labels.map((label, index) => (
+                <View key={`${label}-views`} style={styles.chartColumn}>
+                  <View style={styles.chartTrack}>
                     <View
                       style={[
-                        styles.attentionItemCount,
+                        styles.chartBar,
+                        styles.viewsBar,
                         {
-                          backgroundColor: isDark
-                            ? colors.cardSubtle
-                            : "#F3F4F6",
+                          height: `${Math.max(
+                            14,
+                            (monthViewTrend.values[index] /
+                              monthViewTrend.maxValue) *
+                              100,
+                          )}%`,
                         },
                       ]}
-                    >
-                      <Text
-                        style={[
-                          styles.attentionItemCountText,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {item.count}
-                      </Text>
-                    </View>
-                    <ArrowRight size={16} color={colors.textMuted} />
-                  </TouchableOpacity>
-                );
-              })}
+                    />
+                  </View>
+                  <Text
+                    style={[styles.chartLabel, { color: colors.textMuted }]}
+                  >
+                    {label}
+                  </Text>
+                </View>
+              ))}
             </View>
-          ) : (
-            <Text
-              style={[styles.attentionEmpty, { color: colors.textSecondary }]}
-            >
-              You are all caught up.
-            </Text>
-          )}
-        </View>
+          </View>
 
-        <View style={styles.quickActionsRow}>
-          {[
-            {
-              key: "bookings",
-              label: "Bookings",
-              icon: CalendarDays,
-              onPress: () => router.push("/(tabs)/resavations"),
-            },
-            {
-              key: "chat",
-              label: "Messages",
-              icon: MessageCircle,
-              onPress: () => router.push("/(tabs)/chat"),
-            },
-            {
-              key: "services",
-              label: "Services",
-              icon: BriefcaseBusiness,
-              onPress: () => router.push("/(tabs)/explore"),
-            },
-            {
-              key: "profile",
-              label: "Profile",
-              icon: UserRound,
-              onPress: () => router.push("/(tabs)/profile"),
-            },
-          ].map((action) => {
-            const Icon = action.icon;
-            return (
-              <TouchableOpacity
-                key={action.key}
-                style={[
-                  styles.quickAction,
-                  {
-                    backgroundColor: isDark ? colors.card : "#FFFFFF",
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={action.onPress}
-                activeOpacity={0.75}
-              >
-                <Icon size={18} color={colors.primary} strokeWidth={2.2} />
-                <Text
-                  style={[styles.quickActionLabel, { color: colors.text }]}
-                  numberOfLines={1}
-                >
-                  {action.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          <View
+            style={[
+              styles.chartCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.chartTitle, { color: colors.textSecondary }]}>
+              Revenue trend
+            </Text>
+            <View style={styles.chartBars}>
+              {revenueTrend.labels.map((label, index) => (
+                <View key={`${label}-revenue`} style={styles.chartColumn}>
+                  <View style={styles.chartTrack}>
+                    <View
+                      style={[
+                        styles.chartBar,
+                        styles.revenueBar,
+                        {
+                          height: `${Math.max(
+                            12,
+                            (revenueTrend.values[index] /
+                              revenueTrend.maxValue) *
+                              100,
+                          )}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text
+                    style={[styles.chartLabel, { color: colors.textMuted }]}
+                  >
+                    {label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
         </View>
       </View>
 
@@ -1982,6 +1884,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: Platform.OS === "web" ? 24 : 12,
     paddingBottom: 8,
+    justifyContent: "space-between",
   },
   containerShort: {
     paddingTop: 6,
@@ -2082,7 +1985,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginBottom: 6,
+    marginBottom: 8,
   },
   metricCard: {
     width: "48.6%",
@@ -2093,7 +1996,7 @@ const styles = StyleSheet.create({
     borderColor: "#E8EDF5",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 6,
+    marginBottom: 8,
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.05,
@@ -2149,7 +2052,70 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 10,
-    marginBottom: 7,
+    marginBottom: 8,
+  },
+  chartGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 0,
+    flexGrow: 1,
+    minHeight: 168,
+  },
+  chartCard: {
+    width: "48.6%",
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 10,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  chartTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  chartBars: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    height: 92,
+  },
+  chartColumn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  chartTrack: {
+    width: 18,
+    height: 66,
+    justifyContent: "flex-end",
+    borderRadius: 10,
+    backgroundColor: "#EEF2F7",
+    overflow: "hidden",
+  },
+  chartBar: {
+    width: "100%",
+    borderRadius: 10,
+    minHeight: 12,
+  },
+  viewsBar: {
+    backgroundColor: "#3B82F6",
+  },
+  revenueBar: {
+    backgroundColor: "#F59E0B",
+  },
+  chartLabel: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 9,
+    marginTop: 6,
   },
   insightCard: {
     width: "48.6%",
@@ -2186,105 +2152,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#FCB08A",
     marginTop: 6,
-  },
-  attentionCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  attentionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  attentionTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  attentionIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  attentionTitle: {
-    fontFamily: "Outfit_700Bold",
-    fontSize: 15,
-  },
-  attentionSubtitle: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 10,
-    marginTop: 1,
-  },
-  attentionCount: {
-    fontFamily: "Outfit_700Bold",
-    fontSize: 18,
-  },
-  attentionList: {
-    marginTop: 5,
-  },
-  attentionItem: {
-    minHeight: 34,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 5,
-  },
-  attentionItemText: {
-    flex: 1,
-  },
-  attentionItemLabel: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 11,
-  },
-  attentionItemDetail: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 9,
-    marginTop: 1,
-  },
-  attentionItemCount: {
-    minWidth: 23,
-    height: 23,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 5,
-  },
-  attentionItemCountText: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 11,
-  },
-  attentionEmpty: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 11,
-    marginTop: 5,
-  },
-  quickActionsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 8,
-  },
-  quickAction: {
-    flex: 1,
-    minHeight: 54,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-  },
-  quickActionLabel: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 9,
   },
   centerState: {
     flex: 1,
