@@ -18,8 +18,12 @@ export function formatCoupleName(
 ): string {
   if (!visitor) return fallback;
 
-  const p1 = (visitor.visitor_fname || "").trim();
-  const p2 = (visitor.partner_fname || "").trim();
+  const rawP1 = (visitor.visitor_fname || "").trim();
+  const rawP2 = (visitor.partner_fname || "").trim();
+
+  // Filter out placeholder "Visitor"
+  const p1 = rawP1 && rawP1.toLowerCase() !== "visitor" ? rawP1 : "";
+  const p2 = rawP2 && rawP2.toLowerCase() !== "visitor" ? rawP2 : "";
 
   // If both partners' first names are provided
   if (p1 && p2) {
