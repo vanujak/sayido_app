@@ -16,8 +16,19 @@ import {
 } from "@/lib/in-app-notifications";
 import { registerForPushNotificationsAsync } from "@/lib/push-notifications";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import * as Haptics from "expo-haptics";
 import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
-import { Bell, DollarSign, Eye, Package, Users } from "lucide-react-native";
+import {
+  Bell,
+  Calendar,
+  DollarSign,
+  Eye,
+  Package,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+  Users,
+} from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -25,6 +36,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -32,6 +44,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type PackageAnalytics = {
   packageId: string;
@@ -69,6 +82,25 @@ type NotificationPreview = {
   message: string;
   timestamp: string;
   senderType?: string;
+};
+
+type Timeframe = "30D" | "3M" | "6M" | "1Y";
+
+type GrowthRate = {
+  percent: number;
+  isPositive: boolean;
+};
+
+const calculateGrowth = (current: number, previous: number): GrowthRate | null => {
+  if (previous === 0) {
+    return current > 0 ? { percent: 100, isPositive: true } : null;
+  }
+  const diff = current - previous;
+  const percent = Math.round((diff / previous) * 100);
+  return {
+    percent: Math.abs(percent),
+    isPositive: diff >= 0,
+  };
 };
 
 const toText = (value: unknown, fallback = "") =>
@@ -655,11 +687,27 @@ export default function Dashboard() {
     lname?: string;
     busname?: string;
   } | null>(null);
+  const insets = useSafeAreaInsets();
+  const [refreshing, setRefreshing] = useState(false);
+  const [timeframe, setTimeframe] = useState<Timeframe>("6M");
+  const [selectedViewsIndex, setSelectedViewsIndex] = useState<number | null>(null);
+  const [selectedRevenueIndex, setSelectedRevenueIndex] = useState<number | null>(null);
   const isCompactScreen = width < 390;
-  const isShortScreen = height < 760;
+  const isShortScreen = height < 740;
+  const isTallScreen = height >= 820;
   const isWideScreen = width >= 860;
   const metricCardWidth = isWideScreen ? "24%" : "48.6%";
   const totalNotificationCount = notificationPreviews.length;
+
+  const metricCardMinHeight = isShortScreen ? 86 : isTallScreen ? 106 : 96;
+  const insightCardMinHeight = isShortScreen ? 84 : isTallScreen ? 100 : 92;
+  const chartCardHeight = isShortScreen ? 136 : isTallScreen ? 170 : 152;
+  const chartBarsHeight = isShortScreen ? 72 : isTallScreen ? 94 : 82;
+  const chartTrackHeight = isShortScreen ? 52 : isTallScreen ? 72 : 62;
+  const dynamicBottomPadding = Math.max(
+    2,
+    Math.min(16, Math.round((height - 720) * 0.1)),
+  );
 
   // Handle phone hardware back button on root dashboard
   useFocusEffect(
@@ -892,40 +940,6 @@ export default function Dashboard() {
     }, analytics.monthlyViews[0]);
   }, [analytics.monthlyViews]);
 
-  const metricCards = useMemo(
-    () => [
-      {
-        key: "views",
-        label: "Total Views",
-        value: `${analytics.totalUniqueViews}`,
-        icon: Eye,
-        iconColor: "#3B82F6",
-      },
-      {
-        key: "bookings",
-        label: "Total Bookings",
-        value: `${totalBookings}`,
-        icon: Users,
-        iconColor: "#22C55E",
-      },
-      {
-        key: "revenue",
-        label: "Total Revenue",
-        value: formatCurrency(totalRevenue),
-        icon: DollarSign,
-        iconColor: "#F97316",
-      },
-      {
-        key: "packages",
-        label: "Packages",
-        value: `${totalPackages}`,
-        icon: Package,
-        iconColor: "#14B8A6",
-      },
-    ],
-    [analytics.totalUniqueViews, totalBookings, totalPackages, totalRevenue],
-  );
-
   const monthViewTrend = useMemo(() => {
     const labelMap = new Map<string, number>();
     analytics.monthlyViews.forEach((item) => {
@@ -933,9 +947,26 @@ export default function Dashboard() {
       labelMap.set(monthLabel, item.views);
     });
 
-    const monthNames = Array.from({ length: 6 }, (_, index) => {
+    if (timeframe === "30D") {
+      const labels = ["W1", "W2", "W3", "W4"];
+      const currentMonthViews =
+        labelMap.get(
+          new Date().toLocaleDateString("en-US", { month: "short" }),
+        ) ?? analytics.totalUniqueViews;
+      const base = Math.floor(currentMonthViews / 4);
+      const remainder = currentMonthViews % 4;
+      const values = [base, base, base, base + remainder];
+      return {
+        labels,
+        values,
+        maxValue: Math.max(...values, 1),
+      };
+    }
+
+    const count = timeframe === "3M" ? 3 : timeframe === "6M" ? 6 : 12;
+    const monthNames = Array.from({ length: count }, (_, index) => {
       const date = new Date();
-      date.setMonth(date.getMonth() - (5 - index));
+      date.setMonth(date.getMonth() - (count - 1 - index));
       return date.toLocaleDateString("en-US", { month: "short" });
     });
 
@@ -947,9 +978,33 @@ export default function Dashboard() {
       values,
       maxValue,
     };
-  }, [analytics.monthlyViews]);
+  }, [analytics.monthlyViews, analytics.totalUniqueViews, timeframe]);
 
   const revenueTrend = useMemo(() => {
+    if (timeframe === "30D") {
+      const labels = ["W1", "W2", "W3", "W4"];
+      const now = Date.now();
+      const ONE_DAY = 24 * 60 * 60 * 1000;
+      const ONE_WEEK = 7 * ONE_DAY;
+      const values = [0, 0, 0, 0];
+
+      completedPayments.forEach((payment) => {
+        const pTime = new Date(payment.createdAt).getTime();
+        if (Number.isNaN(pTime)) return;
+        const diff = now - pTime;
+        if (diff >= 0 && diff <= 28 * ONE_DAY) {
+          const bucket = 3 - Math.min(3, Math.floor(diff / ONE_WEEK));
+          values[bucket] += payment.amount;
+        }
+      });
+
+      return {
+        labels,
+        values,
+        maxValue: Math.max(...values, 1),
+      };
+    }
+
     const labelMap = new Map<string, number>();
     completedPayments.forEach((payment) => {
       const monthLabel = monthShort(payment.createdAt);
@@ -960,9 +1015,10 @@ export default function Dashboard() {
       );
     });
 
-    const monthNames = Array.from({ length: 6 }, (_, index) => {
+    const count = timeframe === "3M" ? 3 : timeframe === "6M" ? 6 : 12;
+    const monthNames = Array.from({ length: count }, (_, index) => {
       const date = new Date();
-      date.setMonth(date.getMonth() - (5 - index));
+      date.setMonth(date.getMonth() - (count - 1 - index));
       return date.toLocaleDateString("en-US", { month: "short" });
     });
 
@@ -974,7 +1030,83 @@ export default function Dashboard() {
       values,
       maxValue,
     };
+  }, [completedPayments, timeframe]);
+
+  const viewsGrowth = useMemo(() => {
+    if (monthViewTrend.values.length < 2) return null;
+    const current = monthViewTrend.values[monthViewTrend.values.length - 1];
+    const previous = monthViewTrend.values[monthViewTrend.values.length - 2];
+    return calculateGrowth(current, previous);
+  }, [monthViewTrend.values]);
+
+  const revenueGrowth = useMemo(() => {
+    if (revenueTrend.values.length < 2) return null;
+    const current = revenueTrend.values[revenueTrend.values.length - 1];
+    const previous = revenueTrend.values[revenueTrend.values.length - 2];
+    return calculateGrowth(current, previous);
+  }, [revenueTrend.values]);
+
+  const bookingsGrowth = useMemo(() => {
+    const now = new Date();
+    const currentMonthStr = now.toLocaleDateString("en-US", { month: "short" });
+    now.setMonth(now.getMonth() - 1);
+    const prevMonthStr = now.toLocaleDateString("en-US", { month: "short" });
+
+    let curCount = 0;
+    let prevCount = 0;
+    completedPayments.forEach((p) => {
+      const m = monthShort(p.createdAt);
+      if (m === currentMonthStr) curCount++;
+      if (m === prevMonthStr) prevCount++;
+    });
+    return calculateGrowth(curCount, prevCount);
   }, [completedPayments]);
+
+  const metricCards = useMemo(
+    () => [
+      {
+        key: "views",
+        label: "Total Views",
+        value: `${analytics.totalUniqueViews}`,
+        icon: Eye,
+        iconColor: "#3B82F6",
+        growth: viewsGrowth,
+      },
+      {
+        key: "bookings",
+        label: "Total Bookings",
+        value: `${totalBookings}`,
+        icon: Users,
+        iconColor: "#22C55E",
+        growth: bookingsGrowth,
+      },
+      {
+        key: "revenue",
+        label: "Total Revenue",
+        value: formatCurrency(totalRevenue),
+        icon: DollarSign,
+        iconColor: "#F97316",
+        growth: revenueGrowth,
+      },
+      {
+        key: "packages",
+        label: "Packages",
+        value: `${totalPackages}`,
+        icon: Package,
+        iconColor: "#14B8A6",
+        growth: null,
+      },
+    ],
+    [
+      analytics.totalUniqueViews,
+      bookingsGrowth,
+      revenueGrowth,
+      totalBookings,
+      totalPackages,
+      totalRevenue,
+      viewsGrowth,
+    ],
+  );
 
   const refreshNotificationPreviews = useCallback(async () => {
     const targetVendorId =
@@ -1131,6 +1263,18 @@ export default function Dashboard() {
     unreadCount,
     vendorId,
   ]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        loadDashboardData(),
+        refreshNotificationPreviews(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadDashboardData, refreshNotificationPreviews]);
 
   const handleNotifications = useCallback(() => {
     setNotificationsOpen((prev) => {
@@ -1384,7 +1528,28 @@ export default function Dashboard() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={[styles.container, isShortScreen && styles.containerShort]}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.container,
+          {
+            paddingTop: Platform.OS === "web" ? 14 : Math.min(insets.top, 6),
+            paddingBottom: dynamicBottomPadding,
+          },
+          isShortScreen && styles.containerShort,
+        ]}
+        scrollEnabled={height < 640}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         <View style={styles.headerRow}>
           <View style={styles.headerTitleContainer}>
             <View
@@ -1435,6 +1600,62 @@ export default function Dashboard() {
           </View>
         </View>
 
+        <View
+          style={[
+            styles.timeframeContainer,
+            {
+              backgroundColor: isDark
+                ? "rgba(255, 255, 255, 0.05)"
+                : "#F1F5F9",
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          {(["30D", "3M", "6M", "1Y"] as const).map((tf) => {
+            const isActive = timeframe === tf;
+            return (
+              <TouchableOpacity
+                key={tf}
+                style={[
+                  styles.timeframeButton,
+                  isActive && [
+                    styles.timeframeButtonActive,
+                    {
+                      backgroundColor: colors.card,
+                      shadowColor: isDark ? "#000000" : "#0F172A",
+                    },
+                  ],
+                ]}
+                onPress={() => {
+                  if (timeframe !== tf) {
+                    void Haptics.selectionAsync();
+                    setTimeframe(tf);
+                    setSelectedViewsIndex(null);
+                    setSelectedRevenueIndex(null);
+                  }
+                }}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityLabel={`Select ${tf} timeframe`}
+              >
+                <Text
+                  style={[
+                    styles.timeframeButtonText,
+                    {
+                      color: isActive ? colors.primary : colors.textMuted,
+                      fontFamily: isActive
+                        ? "Montserrat_600SemiBold"
+                        : "Montserrat_500Medium",
+                    },
+                  ]}
+                >
+                  {tf}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         <View style={styles.metricGrid}>
           {metricCards.map((card) => {
             const Icon = card.icon;
@@ -1450,7 +1671,7 @@ export default function Dashboard() {
                   styles.metricCard,
                   {
                     width: metricCardWidth,
-                    minHeight: isShortScreen ? 90 : isCompactScreen ? 104 : 116,
+                    minHeight: metricCardMinHeight,
                     backgroundColor: colors.card,
                     borderColor: colors.border,
                   },
@@ -1494,6 +1715,57 @@ export default function Dashboard() {
                     {card.value}
                   </Text>
                 )}
+                <View style={styles.metricFooter}>
+                  {card.growth ? (
+                    <View
+                      style={[
+                        styles.growthBadge,
+                        {
+                          backgroundColor: card.growth.isPositive
+                            ? isDark
+                              ? "rgba(34, 197, 94, 0.15)"
+                              : "#DCFCE7"
+                            : isDark
+                              ? "rgba(239, 68, 68, 0.15)"
+                              : "#FEE2E2",
+                        },
+                      ]}
+                    >
+                      {card.growth.isPositive ? (
+                        <TrendingUp
+                          size={11}
+                          color={isDark ? "#4ADE80" : "#16A34A"}
+                          strokeWidth={2.5}
+                        />
+                      ) : (
+                        <TrendingDown
+                          size={11}
+                          color={isDark ? "#F87171" : "#DC2626"}
+                          strokeWidth={2.5}
+                        />
+                      )}
+                      <Text
+                        style={[
+                          styles.growthText,
+                          {
+                            color: card.growth.isPositive
+                              ? isDark
+                                ? "#4ADE80"
+                                : "#15803D"
+                              : isDark
+                                ? "#F87171"
+                                : "#B91C1C",
+                          },
+                        ]}
+                      >
+                        {card.growth.isPositive ? "+" : "-"}
+                        {card.growth.percent}%
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.growthBadgePlaceholder} />
+                  )}
+                </View>
               </View>
             );
           })}
@@ -1503,11 +1775,21 @@ export default function Dashboard() {
           <View
             style={[
               styles.insightCard,
-              { backgroundColor: colors.insightCardBg },
+              {
+                backgroundColor: colors.insightCardBg,
+                borderColor: isDark
+                  ? "rgba(255, 255, 255, 0.08)"
+                  : "transparent",
+                borderWidth: isDark ? 1 : 0,
+                minHeight: insightCardMinHeight,
+              },
             ]}
           >
-            <Text style={styles.insightTitle}>Top Package</Text>
-            <Text style={styles.insightValue} numberOfLines={1}>
+            <View style={styles.insightHeader}>
+              <Text style={styles.insightTitle}>Top Package</Text>
+              <Sparkles size={14} color="#FCB08A" />
+            </View>
+            <Text style={styles.insightValue} numberOfLines={2}>
               {topPackage?.packageName || "No data"}
             </Text>
             <Text style={styles.insightMeta}>
@@ -1525,11 +1807,21 @@ export default function Dashboard() {
           <View
             style={[
               styles.insightCard,
-              { backgroundColor: colors.insightCardBg },
+              {
+                backgroundColor: colors.insightCardBg,
+                borderColor: isDark
+                  ? "rgba(255, 255, 255, 0.08)"
+                  : "transparent",
+                borderWidth: isDark ? 1 : 0,
+                minHeight: insightCardMinHeight,
+              },
             ]}
           >
-            <Text style={styles.insightTitle}>Peak Month</Text>
-            <Text style={styles.insightValue}>
+            <View style={styles.insightHeader}>
+              <Text style={styles.insightTitle}>Peak Month</Text>
+              <Calendar size={14} color="#AFC2E3" />
+            </View>
+            <Text style={styles.insightValue} numberOfLines={2}>
               {peakMonth ? monthFull(peakMonth.month) : "--"}
             </Text>
             <Text style={styles.insightMeta}>
@@ -1552,38 +1844,107 @@ export default function Dashboard() {
               {
                 backgroundColor: colors.card,
                 borderColor: colors.border,
+                height: chartCardHeight,
               },
             ]}
           >
-            <Text style={[styles.chartTitle, { color: colors.textSecondary }]}>
-              Views trend
-            </Text>
-            <View style={styles.chartBars}>
-              {monthViewTrend.labels.map((label, index) => (
-                <View key={`${label}-views`} style={styles.chartColumn}>
-                  <View style={styles.chartTrack}>
-                    <View
-                      style={[
-                        styles.chartBar,
-                        styles.viewsBar,
-                        {
-                          height: `${Math.max(
-                            14,
-                            (monthViewTrend.values[index] /
-                              monthViewTrend.maxValue) *
-                              100,
-                          )}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text
-                    style={[styles.chartLabel, { color: colors.textMuted }]}
-                  >
-                    {label}
+            <View style={styles.chartHeaderRow}>
+              <Text
+                style={[styles.chartTitle, { color: colors.textSecondary }]}
+              >
+                Views trend
+              </Text>
+              {selectedViewsIndex !== null ? (
+                <View
+                  style={[
+                    styles.chartTooltipPill,
+                    {
+                      backgroundColor: isDark
+                        ? "rgba(59, 130, 246, 0.2)"
+                        : "#EFF6FF",
+                    },
+                  ]}
+                >
+                  <Text style={[styles.chartTooltipText, { color: "#3B82F6" }]}>
+                    {monthViewTrend.labels[selectedViewsIndex]}:{" "}
+                    {monthViewTrend.values[selectedViewsIndex]} views
                   </Text>
                 </View>
-              ))}
+              ) : (
+                <Text style={[styles.chartSubtitle, { color: colors.textMuted }]}>
+                  Tap bar
+                </Text>
+              )}
+            </View>
+            <View style={[styles.chartBars, { height: chartBarsHeight }]}>
+              {monthViewTrend.labels.map((label, index) => {
+                const isSelected = selectedViewsIndex === index;
+                const isBarDimmed =
+                  selectedViewsIndex !== null && !isSelected;
+                return (
+                  <TouchableOpacity
+                    key={`${label}-views`}
+                    style={styles.chartColumn}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      void Haptics.impactAsync(
+                        Haptics.ImpactFeedbackStyle.Light,
+                      );
+                      setSelectedViewsIndex((curr) =>
+                        curr === index ? null : index,
+                      );
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.chartTrack,
+                        {
+                          backgroundColor: isDark
+                            ? "rgba(255, 255, 255, 0.08)"
+                            : "#EEF2F7",
+                          width: timeframe === "1Y" ? 11 : 18,
+                          height: chartTrackHeight,
+                        },
+                        isSelected && {
+                          borderColor: "#3B82F6",
+                          borderWidth: 1.5,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.chartBar,
+                          styles.viewsBar,
+                          {
+                            height: `${Math.max(
+                              14,
+                              (monthViewTrend.values[index] /
+                                monthViewTrend.maxValue) *
+                                100,
+                            )}%`,
+                            opacity: isBarDimmed ? 0.45 : 1,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.chartLabel,
+                        {
+                          color: isSelected ? "#3B82F6" : colors.textMuted,
+                          fontFamily: isSelected
+                            ? "Montserrat_600SemiBold"
+                            : "Montserrat_500Medium",
+                          fontSize: timeframe === "1Y" ? 8 : 9,
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
 
@@ -1593,42 +1954,113 @@ export default function Dashboard() {
               {
                 backgroundColor: colors.card,
                 borderColor: colors.border,
+                height: chartCardHeight,
               },
             ]}
           >
-            <Text style={[styles.chartTitle, { color: colors.textSecondary }]}>
-              Revenue trend
-            </Text>
-            <View style={styles.chartBars}>
-              {revenueTrend.labels.map((label, index) => (
-                <View key={`${label}-revenue`} style={styles.chartColumn}>
-                  <View style={styles.chartTrack}>
-                    <View
-                      style={[
-                        styles.chartBar,
-                        styles.revenueBar,
-                        {
-                          height: `${Math.max(
-                            12,
-                            (revenueTrend.values[index] /
-                              revenueTrend.maxValue) *
-                              100,
-                          )}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text
-                    style={[styles.chartLabel, { color: colors.textMuted }]}
-                  >
-                    {label}
+            <View style={styles.chartHeaderRow}>
+              <Text
+                style={[styles.chartTitle, { color: colors.textSecondary }]}
+              >
+                Revenue trend
+              </Text>
+              {selectedRevenueIndex !== null ? (
+                <View
+                  style={[
+                    styles.chartTooltipPill,
+                    {
+                      backgroundColor: isDark
+                        ? "rgba(245, 158, 11, 0.2)"
+                        : "#FEF3C7",
+                    },
+                  ]}
+                >
+                  <Text style={[styles.chartTooltipText, { color: "#F59E0B" }]}>
+                    {revenueTrend.labels[selectedRevenueIndex]}:{" "}
+                    {formatCurrency(
+                      revenueTrend.values[selectedRevenueIndex],
+                    )}
                   </Text>
                 </View>
-              ))}
+              ) : (
+                <Text style={[styles.chartSubtitle, { color: colors.textMuted }]}>
+                  Tap bar
+                </Text>
+              )}
+            </View>
+            <View style={[styles.chartBars, { height: chartBarsHeight }]}>
+              {revenueTrend.labels.map((label, index) => {
+                const isSelected = selectedRevenueIndex === index;
+                const isBarDimmed =
+                  selectedRevenueIndex !== null && !isSelected;
+                return (
+                  <TouchableOpacity
+                    key={`${label}-revenue`}
+                    style={styles.chartColumn}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      void Haptics.impactAsync(
+                        Haptics.ImpactFeedbackStyle.Light,
+                      );
+                      setSelectedRevenueIndex((curr) =>
+                        curr === index ? null : index,
+                      );
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.chartTrack,
+                        {
+                          backgroundColor: isDark
+                            ? "rgba(255, 255, 255, 0.08)"
+                            : "#EEF2F7",
+                          width: timeframe === "1Y" ? 11 : 18,
+                          height: chartTrackHeight,
+                        },
+                        isSelected && {
+                          borderColor: "#F59E0B",
+                          borderWidth: 1.5,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.chartBar,
+                          styles.revenueBar,
+                          {
+                            height: `${Math.max(
+                              12,
+                              (revenueTrend.values[index] /
+                                revenueTrend.maxValue) *
+                                100,
+                            )}%`,
+                            opacity: isBarDimmed ? 0.45 : 1,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.chartLabel,
+                        {
+                          color: isSelected ? "#F59E0B" : colors.textMuted,
+                          fontFamily: isSelected
+                            ? "Montserrat_600SemiBold"
+                            : "Montserrat_500Medium",
+                          fontSize: timeframe === "1Y" ? 8 : 9,
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         </View>
-      </View>
+      </ScrollView>
 
       <Modal
         animationType="fade"
@@ -1764,7 +2196,12 @@ export default function Dashboard() {
                               setNotificationsOpen(false);
                               router.push({
                                 pathname: "/(tabs)/resavations",
-                                params: { tab: "approvals" },
+                                params: {
+                                  tab: "approvals",
+                                  ...(notificationStateVendorId
+                                    ? { vendor_id: notificationStateVendorId }
+                                    : {}),
+                                },
                               });
                             } else {
                               if (item.reservationId) {
@@ -1782,7 +2219,16 @@ export default function Dashboard() {
                                 );
                               }
                               setNotificationsOpen(false);
-                              router.push("/(tabs)/resavations");
+                              router.push({
+                                pathname: "/(tabs)/resavations",
+                                ...(notificationStateVendorId
+                                  ? {
+                                      params: {
+                                        vendor_id: notificationStateVendorId,
+                                      },
+                                    }
+                                  : {}),
+                              });
                             }
                           }}
                           activeOpacity={0.85}
@@ -1879,22 +2325,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#FFF8F3",
   },
-  container: {
+  scrollView: {
     flex: 1,
-    paddingHorizontal: 18,
-    paddingTop: Platform.OS === "web" ? 24 : 12,
-    paddingBottom: 8,
+  },
+  container: {
+    flexGrow: 1,
+    paddingHorizontal: 16,
     justifyContent: "space-between",
   },
   containerShort: {
-    paddingTop: 6,
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 8,
+    marginBottom: 3,
     zIndex: 10,
   },
   headerTitleContainer: {
@@ -1909,9 +2355,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
@@ -1919,10 +2365,10 @@ const styles = StyleSheet.create({
     borderColor: "#E8EDF5",
     overflow: "visible",
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1.5,
     zIndex: 10,
   },
   badge: {
@@ -1958,50 +2404,81 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E3EAF5",
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 2.5,
+    marginBottom: 2,
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
     elevation: 1,
   },
   welcomePillText: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 13,
+    fontSize: 11.5,
     color: "#5B6E8B",
     letterSpacing: 0.2,
   },
   name: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 34,
-    lineHeight: 37,
+    fontSize: 27,
+    lineHeight: 30,
     color: "#1A2438",
     letterSpacing: 0.2,
     maxWidth: 240,
+  },
+  timeframeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F1F5F9",
+    borderRadius: 10,
+    padding: 2,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  timeframeButton: {
+    flex: 1,
+    paddingVertical: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+  },
+  timeframeButtonActive: {
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  timeframeButtonText: {
+    fontSize: 11,
+    letterSpacing: 0.2,
   },
   metricGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   metricCard: {
     width: "48.6%",
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     borderWidth: 1,
     borderColor: "#E8EDF5",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 8,
+    marginBottom: 6,
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1.5,
   },
   metricHeader: {
     width: "100%",
@@ -2011,82 +2488,166 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 13,
-    lineHeight: 16,
+    fontSize: 12,
+    lineHeight: 15,
     color: "#607089",
   },
   metricValue: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 28,
+    lineHeight: 31,
     color: "#0F2342",
-    marginTop: 6,
+    marginTop: 2,
   },
   metricValueSmall: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 28,
+    lineHeight: 31,
     color: "#0F2342",
-    marginTop: 12,
+    marginTop: 4,
   },
   revenueValueBlock: {
-    marginTop: 4,
+    marginTop: 1,
     width: "100%",
   },
   revenueCurrency: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 18,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 16,
     color: "#607089",
     includeFontPadding: false,
   },
   revenueAmount: {
     fontFamily: "Outfit_700Bold",
-    fontSize: 31,
-    lineHeight: 33,
+    fontSize: 25,
+    lineHeight: 28,
     color: "#0F2342",
-    marginTop: 2,
+    marginTop: 1,
     includeFontPadding: false,
+  },
+  metricFooter: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    marginTop: 4,
+  },
+  growthBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  growthBadgePlaceholder: {
+    height: 18,
+  },
+  growthText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10,
+    lineHeight: 13,
   },
   insightRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 8,
+    gap: 8,
+    marginBottom: 6,
+  },
+  insightHeader: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  insightCard: {
+    width: "48.6%",
+    backgroundColor: "#1C2A43",
+    borderRadius: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    justifyContent: "space-between",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 1.5,
+  },
+  insightTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10.5,
+    color: "#AFC2E3",
+  },
+  insightValue: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 13.5,
+    lineHeight: 17,
+    color: "#FFFFFF",
+    marginTop: 2,
+    minHeight: 34,
+  },
+  insightMeta: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 9.5,
+    color: "#C4D3EC",
+    marginTop: 1,
+  },
+  insightRevenue: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 13.5,
+    color: "#FCB08A",
+    marginTop: 4,
   },
   chartGrid: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 10,
-    marginTop: 4,
+    gap: 8,
+    marginTop: 2,
     marginBottom: 0,
-    flexGrow: 1,
-    minHeight: 168,
   },
   chartCard: {
     width: "48.6%",
-    flex: 1,
-    borderRadius: 16,
+    borderRadius: 15,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingHorizontal: 11,
+    paddingTop: 8,
+    paddingBottom: 8,
+    justifyContent: "space-between",
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1.5,
+  },
+  chartHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+    minHeight: 18,
   },
   chartTitle: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    marginBottom: 10,
+    fontSize: 11.5,
+  },
+  chartSubtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 9,
+  },
+  chartTooltipPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+  },
+  chartTooltipText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 9,
   },
   chartBars: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    height: 92,
+    width: "100%",
   },
   chartColumn: {
     flex: 1,
@@ -2095,16 +2656,15 @@ const styles = StyleSheet.create({
   },
   chartTrack: {
     width: 18,
-    height: 66,
     justifyContent: "flex-end",
-    borderRadius: 10,
+    borderRadius: 8,
     backgroundColor: "#EEF2F7",
     overflow: "hidden",
   },
   chartBar: {
     width: "100%",
-    borderRadius: 10,
-    minHeight: 12,
+    borderRadius: 8,
+    minHeight: 10,
   },
   viewsBar: {
     backgroundColor: "#3B82F6",
@@ -2114,44 +2674,8 @@ const styles = StyleSheet.create({
   },
   chartLabel: {
     fontFamily: "Montserrat_500Medium",
-    fontSize: 9,
-    marginTop: 6,
-  },
-  insightCard: {
-    width: "48.6%",
-    backgroundColor: "#1C2A43",
-    borderRadius: 16,
-    padding: 11,
-    justifyContent: "space-between",
-    minHeight: 91,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  insightTitle: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 11,
-    color: "#AFC2E3",
-  },
-  insightValue: {
-    fontFamily: "Outfit_700Bold",
-    fontSize: 17,
-    color: "#FFFFFF",
-    marginTop: 2,
-  },
-  insightMeta: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 10,
-    color: "#C4D3EC",
-    marginTop: 2,
-  },
-  insightRevenue: {
-    fontFamily: "Outfit_700Bold",
-    fontSize: 15,
-    color: "#FCB08A",
-    marginTop: 6,
+    fontSize: 8.5,
+    marginTop: 4,
   },
   centerState: {
     flex: 1,

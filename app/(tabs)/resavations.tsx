@@ -2,8 +2,20 @@ import { ReservationsSkeleton } from "@/components/ui/skeletons";
 import { useAppTheme } from "@/context/ThemeContext";
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
 import { formatCoupleName } from "@/lib/formatCoupleName";
+import { setNotificationReadState } from "@/lib/in-app-notifications";
 import { getVendorSession, setVendorSession } from "@/lib/vendor-session";
 import { useGlobalSearchParams } from "expo-router";
+import {
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Mail,
+  MessageSquare,
+  Phone,
+  ShieldCheck,
+  X,
+  XCircle,
+} from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -51,6 +63,7 @@ type ApprovalRequest = {
   visitorEmail: string;
   visitorPhone: string;
   packageName: string;
+  packagePricing: number;
   serviceName: string;
 };
 
@@ -93,6 +106,24 @@ const formatDateString = (value: string) => {
     month: "short",
     day: "numeric",
   });
+};
+
+const formatFullDate = (value: string) => {
+  const d = parseDate(value);
+  if (!d) return value || "-";
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const formatRemaining = (seconds?: number) => {
+  if (!seconds || seconds <= 0) return "Expired";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return `${hours}h ${minutes}m left`;
 };
 
 const graphQlRequest = async <TData extends unknown>(
@@ -289,6 +320,7 @@ const loadVendorApprovalRequests = async (
           }
           package {
             name
+            pricing
             service {
               name
             }
@@ -331,6 +363,7 @@ const loadVendorApprovalRequests = async (
       visitorEmail: toText(visitor.email),
       visitorPhone: toText(visitor.phone),
       packageName: toText(pkg.name, "Package"),
+      packagePricing: toNumber(pkg.pricing, 0),
       serviceName: toText(service.name, "Service"),
     };
   });
@@ -342,6 +375,7 @@ const respondApprovalRequest = async (
   action: "approve" | "reject",
   vendorMessage?: string,
 ) => {
+  const gqlAction = action === "approve" ? "APPROVE" : "REJECT";
   return graphQlRequest(
     `
       mutation RespondApprovalRequestForMobile($input: RespondApprovalRequestInput!) {
@@ -349,6 +383,10 @@ const respondApprovalRequest = async (
           id
           status
           vendorMessage
+          approvedAt
+          expiresAt
+          isExpired
+          secondsRemaining
         }
       }
     `,
@@ -356,7 +394,7 @@ const respondApprovalRequest = async (
       input: {
         requestId,
         vendorId,
-        action,
+        action: gqlAction,
         vendorMessage: vendorMessage?.trim() || undefined,
       },
     },
@@ -424,6 +462,10 @@ export default function ReservationsScreen() {
   const [activeTab, setActiveTab] = useState<"calendar" | "approvals">(
     params.tab === "approvals" ? "approvals" : "calendar",
   );
+  const [approvalFilter, setApprovalFilter] = useState<
+    "all" | "pending" | "approved"
+  >("all");
+  const [resolvedVendorId, setResolvedVendorId] = useState("");
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>(
     [],
@@ -466,21 +508,25 @@ export default function ReservationsScreen() {
   const loadData = useCallback(async () => {
     setErrorMessage("");
     try {
-      const resolvedVendorId =
+      const targetVendorId =
+        resolvedVendorId ||
         vendorId ||
+        vendorSession.vendorId ||
+        getVendorSession().vendorId ||
         (await loadVendorIdByEmail(vendorEmail)) ||
         readVendorIdFromCookie();
-      if (!resolvedVendorId) {
+      if (!targetVendorId) {
         throw new Error("Could not resolve vendor id for reservations.");
       }
+      setResolvedVendorId(targetVendorId);
       setVendorSession({
-        vendorId: resolvedVendorId,
+        vendorId: targetVendorId,
         email: vendorEmail || vendorSession.email,
       });
 
       const [reservationsResult, approvalsResult] = await Promise.all([
-        loadVendorReservations(resolvedVendorId),
-        loadVendorApprovalRequests(resolvedVendorId).catch(() => []),
+        loadVendorReservations(targetVendorId),
+        loadVendorApprovalRequests(targetVendorId).catch(() => []),
       ]);
       setReservations(reservationsResult);
       setApprovalRequests(approvalsResult);
@@ -495,37 +541,57 @@ export default function ReservationsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [vendorEmail, vendorId]);
+  }, [resolvedVendorId, vendorEmail, vendorId]);
 
   const handleConfirmApprovalAction = async () => {
     if (!activeApprovalModal) return;
-    const resolvedVendorId =
-      vendorId || vendorSession.vendorId || readVendorIdFromCookie();
-    if (!resolvedVendorId) return;
+    const targetVendorId =
+      resolvedVendorId ||
+      vendorId ||
+      vendorSession.vendorId ||
+      getVendorSession().vendorId ||
+      (await loadVendorIdByEmail(vendorEmail)) ||
+      readVendorIdFromCookie();
+
+    if (!targetVendorId) {
+      Alert.alert(
+        "Account Error",
+        "Could not identify your vendor account. Please sign out and sign in again.",
+      );
+      return;
+    }
 
     setActionLoading(true);
     try {
       await respondApprovalRequest(
         activeApprovalModal.request.id,
-        resolvedVendorId,
+        targetVendorId,
         activeApprovalModal.action,
         responseNote,
       );
+
+      // Mark notification as seen
+      setNotificationReadState(targetVendorId, {
+        seenApprovalIds: {
+          [activeApprovalModal.request.id]: true,
+        },
+      });
+
       Alert.alert(
         activeApprovalModal.action === "approve"
           ? "Request Approved"
           : "Request Declined",
         activeApprovalModal.action === "approve"
-          ? "The couple has been notified and has 24 hours to pay advance."
-          : "The couple has been notified that you declined the request.",
+          ? "Request approved! The couple has 24 hours to pay advance."
+          : "Request rejected.",
       );
       setActiveApprovalModal(null);
       setResponseNote("");
-      loadData();
+      void loadData();
     } catch (err) {
       Alert.alert(
         "Error",
-        err instanceof Error ? err.message : "Failed to respond",
+        err instanceof Error ? err.message : "Failed to respond to request.",
       );
     } finally {
       setActionLoading(false);
@@ -572,6 +638,22 @@ export default function ReservationsScreen() {
       (r) => (r.status || "").toLowerCase() === "pending",
     ).length;
   }, [approvalRequests]);
+
+  const approvedApprovalsCount = useMemo(() => {
+    return approvalRequests.filter(
+      (r) => (r.status || "").toLowerCase() === "approved" && !r.isExpired,
+    ).length;
+  }, [approvalRequests]);
+
+  const filteredApprovalRequests = useMemo(() => {
+    return approvalRequests.filter((r) => {
+      const status = (r.status || "").toLowerCase();
+      if (approvalFilter === "pending") return status === "pending";
+      if (approvalFilter === "approved")
+        return status === "approved" && !r.isExpired;
+      return true;
+    });
+  }, [approvalFilter, approvalRequests]);
 
   const upcomingBookings = useMemo(() => {
     const today = new Date();
@@ -1123,27 +1205,182 @@ export default function ReservationsScreen() {
           </>
         ) : (
           <View style={styles.approvalsContainer}>
-            {approvalRequests.length === 0 ? (
+            {/* Header with Title and Filter Switcher */}
+            <View style={styles.approvalsHeaderBlock}>
+              <View style={styles.approvalsTitleRow}>
+                <Text style={[styles.approvalsTitle, { color: colors.text }]}>
+                  Approval Requests
+                </Text>
+                {pendingApprovalsCount > 0 && (
+                  <View style={styles.newBadge}>
+                    <Text style={styles.newBadgeText}>
+                      {pendingApprovalsCount} new
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.approvalsSubtitle,
+                  { color: colors.textSecondary },
+                ]}
+              >
+                Review couples requesting prior approval for your packages
+              </Text>
+
+              {/* Filter Pills */}
+              <View
+                style={[
+                  styles.filterPillsContainer,
+                  {
+                    backgroundColor: isDark
+                      ? "rgba(255, 255, 255, 0.05)"
+                      : "#F1F5F9",
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.filterPill,
+                    approvalFilter === "all" && [
+                      styles.filterPillActive,
+                      {
+                        backgroundColor: colors.card,
+                        shadowColor: isDark ? "#000000" : "#0F172A",
+                      },
+                    ],
+                  ]}
+                  onPress={() => setApprovalFilter("all")}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.filterPillText,
+                      {
+                        color:
+                          approvalFilter === "all"
+                            ? colors.primary
+                            : colors.textSecondary,
+                        fontFamily:
+                          approvalFilter === "all"
+                            ? "Montserrat_600SemiBold"
+                            : "Montserrat_500Medium",
+                      },
+                    ]}
+                  >
+                    All ({approvalRequests.length})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.filterPill,
+                    approvalFilter === "pending" && [
+                      styles.filterPillActive,
+                      {
+                        backgroundColor: colors.card,
+                        shadowColor: isDark ? "#000000" : "#0F172A",
+                      },
+                    ],
+                  ]}
+                  onPress={() => setApprovalFilter("pending")}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.filterPillText,
+                      {
+                        color:
+                          approvalFilter === "pending"
+                            ? colors.primary
+                            : colors.textSecondary,
+                        fontFamily:
+                          approvalFilter === "pending"
+                            ? "Montserrat_600SemiBold"
+                            : "Montserrat_500Medium",
+                      },
+                    ]}
+                  >
+                    Pending ({pendingApprovalsCount})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.filterPill,
+                    approvalFilter === "approved" && [
+                      styles.filterPillActive,
+                      {
+                        backgroundColor: colors.card,
+                        shadowColor: isDark ? "#000000" : "#0F172A",
+                      },
+                    ],
+                  ]}
+                  onPress={() => setApprovalFilter("approved")}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.filterPillText,
+                      {
+                        color:
+                          approvalFilter === "approved"
+                            ? colors.primary
+                            : colors.textSecondary,
+                        fontFamily:
+                          approvalFilter === "approved"
+                            ? "Montserrat_600SemiBold"
+                            : "Montserrat_500Medium",
+                      },
+                    ]}
+                  >
+                    Approved ({approvedApprovalsCount})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {filteredApprovalRequests.length === 0 ? (
               <View
                 style={[
                   styles.emptyApprovalsCard,
                   { backgroundColor: colors.card, borderColor: colors.border },
                 ]}
               >
+                <View
+                  style={[
+                    styles.emptyIconCircle,
+                    {
+                      backgroundColor: isDark
+                        ? "rgba(255, 255, 255, 0.06)"
+                        : "#F3F4F6",
+                    },
+                  ]}
+                >
+                  <ShieldCheck size={28} color={colors.textSecondary} />
+                </View>
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                  No approval requests found
+                </Text>
                 <Text
                   style={[styles.emptyText, { color: colors.textSecondary }]}
                 >
-                  No approval requests found.
+                  When couples select packages that require your prior approval,
+                  their date requests will appear here.
                 </Text>
               </View>
             ) : (
-              approvalRequests.map((req) => {
+              filteredApprovalRequests.map((req) => {
                 const status = (req.status || "").toLowerCase();
                 const isPending = status === "pending";
-                const isApproved = status === "approved";
+                const isApproved = status === "approved" && !req.isExpired;
                 const isRejected = status === "rejected";
                 const isExpired = status === "expired" || req.isExpired;
                 const isPurchased = status === "purchased";
+                const initial = (req.visitorName?.trim() || "C")
+                  .charAt(0)
+                  .toUpperCase();
 
                 return (
                   <View
@@ -1156,122 +1393,293 @@ export default function ReservationsScreen() {
                       },
                     ]}
                   >
+                    {/* Requester & Status Row */}
                     <View style={styles.approvalHeader}>
-                      <View style={{ flex: 1 }}>
+                      <View style={styles.requesterInfoRow}>
+                        <View
+                          style={[
+                            styles.avatarCircle,
+                            {
+                              backgroundColor: isDark
+                                ? "rgba(249, 115, 22, 0.15)"
+                                : "#FFEDD5",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.avatarText,
+                              { color: isDark ? "#FB923C" : "#EA580C" },
+                            ]}
+                          >
+                            {initial}
+                          </Text>
+                        </View>
+                        <View style={styles.requesterTextCol}>
+                          <Text
+                            style={[
+                              styles.approvalCoupleName,
+                              { color: colors.text },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {req.visitorName}
+                          </Text>
+                          <View style={styles.contactItemsRow}>
+                            {req.visitorEmail ? (
+                              <View style={styles.contactItem}>
+                                <Mail
+                                  size={11}
+                                  color={colors.textSecondary}
+                                  style={{ marginRight: 3 }}
+                                />
+                                <Text
+                                  style={[
+                                    styles.contactItemText,
+                                    { color: colors.textSecondary },
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  {req.visitorEmail}
+                                </Text>
+                              </View>
+                            ) : null}
+                            {req.visitorPhone ? (
+                              <View style={styles.contactItem}>
+                                <Phone
+                                  size={11}
+                                  color={colors.textSecondary}
+                                  style={{ marginRight: 3 }}
+                                />
+                                <Text
+                                  style={[
+                                    styles.contactItemText,
+                                    { color: colors.textSecondary },
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  {req.visitorPhone}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Status Badge */}
+                      <View style={styles.statusBadgeCol}>
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            isPending && styles.badgePending,
+                            isApproved && styles.badgeApproved,
+                            isRejected && styles.badgeRejected,
+                            isExpired && styles.badgeExpired,
+                            isPurchased && styles.badgePurchased,
+                          ]}
+                        >
+                          {isPending && (
+                            <Clock
+                              size={11}
+                              color="#B45309"
+                              style={{ marginRight: 4 }}
+                            />
+                          )}
+                          {isApproved && (
+                            <CheckCircle2
+                              size={11}
+                              color="#047857"
+                              style={{ marginRight: 4 }}
+                            />
+                          )}
+                          {isRejected && (
+                            <XCircle
+                              size={11}
+                              color="#B91C1C"
+                              style={{ marginRight: 4 }}
+                            />
+                          )}
+                          {isPurchased && (
+                            <CheckCircle2
+                              size={11}
+                              color="#15803D"
+                              style={{ marginRight: 4 }}
+                            />
+                          )}
+                          {isExpired && (
+                            <Clock
+                              size={11}
+                              color="#4B5563"
+                              style={{ marginRight: 4 }}
+                            />
+                          )}
+                          <Text
+                            style={[
+                              styles.statusBadgeText,
+                              isPending && styles.badgeTextPending,
+                              isApproved && styles.badgeTextApproved,
+                              isRejected && styles.badgeTextRejected,
+                              isExpired && styles.badgeTextExpired,
+                              isPurchased && styles.badgeTextPurchased,
+                            ]}
+                          >
+                            {isPending
+                              ? "Pending Review"
+                              : isApproved
+                                ? "Approved"
+                                : isRejected
+                                  ? "Declined"
+                                  : isPurchased
+                                    ? "Paid & Confirmed"
+                                    : "24h Window Expired"}
+                          </Text>
+                        </View>
+                        {isApproved && (
+                          <Text style={styles.countdownPillText}>
+                            {formatRemaining(req.secondsRemaining)}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Package & Pricing Box */}
+                    <View
+                      style={[
+                        styles.packagePricingBox,
+                        {
+                          backgroundColor: isDark
+                            ? "rgba(255, 255, 255, 0.04)"
+                            : "#F8FAFC",
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <View style={styles.packageRow}>
                         <Text
                           style={[
-                            styles.approvalPackageTitle,
+                            styles.packageBoxLabel,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
+                          Requested Package:
+                        </Text>
+                        <Text
+                          style={[
+                            styles.packageBoxValue,
                             { color: colors.text },
                           ]}
+                          numberOfLines={1}
                         >
                           {req.packageName}
                         </Text>
-                        <Text
-                          style={[
-                            styles.approvalServiceTitle,
-                            { color: colors.textSecondary },
-                          ]}
-                        >
-                          {req.serviceName}
-                        </Text>
                       </View>
-                      <View
+                      {req.packagePricing > 0 ? (
+                        <View style={styles.pricingRow}>
+                          <Text
+                            style={[
+                              styles.packageBoxLabel,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            Pricing / Advance:
+                          </Text>
+                          <Text
+                            style={[
+                              styles.packageBoxValue,
+                              { color: colors.text },
+                            ]}
+                          >
+                            LKR {req.packagePricing.toLocaleString()} (Advance 20%:{" "}
+                            <Text
+                              style={{
+                                fontFamily: "Outfit_700Bold",
+                                color: colors.text,
+                              }}
+                            >
+                              LKR{" "}
+                              {Math.round(
+                                req.packagePricing * 0.2,
+                              ).toLocaleString()}
+                            </Text>
+                            )
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    {/* Requested Event Date Box (Web style blue banner) */}
+                    <View
+                      style={[
+                        styles.eventDateBanner,
+                        {
+                          backgroundColor: isDark
+                            ? "rgba(37, 99, 235, 0.12)"
+                            : "#EFF6FF",
+                          borderColor: isDark
+                            ? "rgba(59, 130, 246, 0.25)"
+                            : "#DBEAFE",
+                        },
+                      ]}
+                    >
+                      <Text
                         style={[
-                          styles.statusBadge,
-                          isPending && styles.badgePending,
-                          isApproved && styles.badgeApproved,
-                          isRejected && styles.badgeRejected,
-                          isExpired && styles.badgeExpired,
-                          isPurchased && styles.badgePurchased,
+                          styles.eventDateLabel,
+                          { color: isDark ? "#93C5FD" : "#1D4ED8" },
                         ]}
                       >
+                        REQUESTED EVENT DATE
+                      </Text>
+                      <View style={styles.eventDateContentRow}>
+                        <Calendar
+                          size={13}
+                          color={isDark ? "#60A5FA" : "#2563EB"}
+                          style={{ marginRight: 5 }}
+                        />
                         <Text
                           style={[
-                            styles.statusBadgeText,
-                            isPending && styles.badgeTextPending,
-                            isApproved && styles.badgeTextApproved,
-                            isRejected && styles.badgeTextRejected,
-                            isExpired && styles.badgeTextExpired,
-                            isPurchased && styles.badgeTextPurchased,
+                            styles.eventDateText,
+                            { color: isDark ? "#DBEAFE" : "#1E3A8A" },
                           ]}
                         >
-                          {isExpired ? "EXPIRED" : status.toUpperCase()}
+                          {formatFullDate(req.bookingDate)}
                         </Text>
                       </View>
                     </View>
 
-                    <View style={styles.detailRow}>
-                      <Text
-                        style={[
-                          styles.detailLabel,
-                          { color: colors.textSecondary },
-                        ]}
-                      >
-                        Couple:
-                      </Text>
-                      <Text
-                        style={[styles.detailValue, { color: colors.text }]}
-                      >
-                        {req.visitorName}{" "}
-                        {req.visitorEmail ? `(${req.visitorEmail})` : ""}
-                      </Text>
-                    </View>
-
-                    {req.visitorPhone ? (
-                      <View style={styles.detailRow}>
-                        <Text
-                          style={[
-                            styles.detailLabel,
-                            { color: colors.textSecondary },
-                          ]}
-                        >
-                          Phone:
-                        </Text>
-                        <Text
-                          style={[styles.detailValue, { color: colors.text }]}
-                        >
-                          {req.visitorPhone}
-                        </Text>
-                      </View>
-                    ) : null}
-
-                    <View style={styles.detailRow}>
-                      <Text
-                        style={[
-                          styles.detailLabel,
-                          { color: colors.textSecondary },
-                        ]}
-                      >
-                        Requested Date:
-                      </Text>
-                      <Text style={styles.detailValueHighlight}>
-                        {formatDateString(req.bookingDate)}
-                      </Text>
-                    </View>
-
+                    {/* Couple's Note (if provided) */}
                     {req.userNote ? (
                       <View
                         style={[
-                          styles.noteBox,
+                          styles.userNoteBox,
                           {
                             backgroundColor: isDark
-                              ? colors.cardSubtle
-                              : "#F9FAFB",
+                              ? "rgba(245, 158, 11, 0.1)"
+                              : "#FFFBEB",
+                            borderColor: isDark
+                              ? "rgba(245, 158, 11, 0.25)"
+                              : "#FDE68A",
                           },
                         ]}
                       >
+                        <View style={styles.noteHeaderRow}>
+                          <MessageSquare
+                            size={12}
+                            color={isDark ? "#FBBF24" : "#B45309"}
+                            style={{ marginRight: 4 }}
+                          />
+                          <Text
+                            style={[
+                              styles.userNoteLabel,
+                              { color: isDark ? "#FBBF24" : "#B45309" },
+                            ]}
+                          >
+                            COUPLE'S NOTE:
+                          </Text>
+                        </View>
                         <Text
                           style={[
-                            styles.noteBoxLabel,
-                            { color: colors.textSecondary },
-                          ]}
-                        >
-                          Couple's Note:
-                        </Text>
-                        <Text
-                          style={[
-                            styles.noteBoxContent,
-                            { color: colors.text },
+                            styles.userNoteText,
+                            { color: isDark ? "#FDE68A" : "#78350F" },
                           ]}
                         >
                           "{req.userNote}"
@@ -1279,29 +1687,33 @@ export default function ReservationsScreen() {
                       </View>
                     ) : null}
 
+                    {/* Vendor's Response (if already responded) */}
                     {req.vendorMessage ? (
                       <View
                         style={[
                           styles.vendorResponseBox,
                           {
                             backgroundColor: isDark
-                              ? "rgba(37, 99, 235, 0.15)"
+                              ? "rgba(59, 130, 246, 0.12)"
                               : "#EFF6FF",
+                            borderColor: isDark
+                              ? "rgba(59, 130, 246, 0.25)"
+                              : "#BFDBFE",
                           },
                         ]}
                       >
                         <Text
                           style={[
-                            styles.noteBoxLabel,
-                            { color: isDark ? "#93C5FD" : "#4B5563" },
+                            styles.vendorResponseLabel,
+                            { color: isDark ? "#93C5FD" : "#1D4ED8" },
                           ]}
                         >
-                          Your Response:
+                          YOUR NOTE TO COUPLE:
                         </Text>
                         <Text
                           style={[
-                            styles.noteBoxContent,
-                            { color: colors.text },
+                            styles.vendorResponseText,
+                            { color: isDark ? "#DBEAFE" : "#1E3A8A" },
                           ]}
                         >
                           "{req.vendorMessage}"
@@ -1309,26 +1721,7 @@ export default function ReservationsScreen() {
                       </View>
                     ) : null}
 
-                    {isApproved && !isExpired && (
-                      <View
-                        style={[
-                          styles.countdownBox,
-                          isDark && {
-                            backgroundColor: "rgba(16, 185, 129, 0.15)",
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.countdownText,
-                            isDark && { color: "#34D399" },
-                          ]}
-                        >
-                          Couple has 24h from approval to pay advance.
-                        </Text>
-                      </View>
-                    )}
-
+                    {/* Action Buttons for Pending Requests */}
                     {isPending && (
                       <View style={styles.approvalActionRow}>
                         <TouchableOpacity
@@ -1336,8 +1729,8 @@ export default function ReservationsScreen() {
                             styles.actionBtn,
                             styles.declineBtn,
                             isDark && {
-                              backgroundColor: "rgba(220, 38, 38, 0.15)",
-                              borderColor: "rgba(220, 38, 38, 0.3)",
+                              backgroundColor: "rgba(239, 68, 68, 0.15)",
+                              borderColor: "rgba(239, 68, 68, 0.35)",
                             },
                           ]}
                           onPress={() => {
@@ -1349,6 +1742,11 @@ export default function ReservationsScreen() {
                           }}
                           activeOpacity={0.8}
                         >
+                          <XCircle
+                            size={14}
+                            color={isDark ? "#F87171" : "#DC2626"}
+                            style={{ marginRight: 5 }}
+                          />
                           <Text
                             style={[
                               styles.declineBtnText,
@@ -1358,6 +1756,7 @@ export default function ReservationsScreen() {
                             Decline
                           </Text>
                         </TouchableOpacity>
+
                         <TouchableOpacity
                           style={[styles.actionBtn, styles.approveBtn]}
                           onPress={() => {
@@ -1369,6 +1768,11 @@ export default function ReservationsScreen() {
                           }}
                           activeOpacity={0.8}
                         >
+                          <CheckCircle2
+                            size={14}
+                            color="#FFFFFF"
+                            style={{ marginRight: 5 }}
+                          />
                           <Text style={styles.approveBtnText}>Approve</Text>
                         </TouchableOpacity>
                       </View>
@@ -1397,23 +1801,96 @@ export default function ReservationsScreen() {
           style={styles.modalOverlay}
         >
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {activeApprovalModal?.action === "approve"
-                ? "Approve Request"
-                : "Decline Request"}
-            </Text>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => {
+                if (!actionLoading) {
+                  setActiveApprovalModal(null);
+                  setResponseNote("");
+                }
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              disabled={actionLoading}
+            >
+              <X size={18} color={isDark ? "#94A3B8" : "#9CA3AF"} />
+            </TouchableOpacity>
+
+            <View style={styles.modalHeaderRow}>
+              <View
+                style={[
+                  styles.modalIconBadge,
+                  activeApprovalModal?.action === "approve"
+                    ? styles.modalIconBadgeApprove
+                    : styles.modalIconBadgeDecline,
+                  isDark &&
+                    (activeApprovalModal?.action === "approve"
+                      ? { backgroundColor: "rgba(16, 185, 129, 0.15)" }
+                      : { backgroundColor: "rgba(239, 68, 68, 0.15)" }),
+                ]}
+              >
+                {activeApprovalModal?.action === "approve" ? (
+                  <CheckCircle2
+                    size={20}
+                    color={isDark ? "#34D399" : "#059669"}
+                  />
+                ) : (
+                  <XCircle size={20} color={isDark ? "#F87171" : "#DC2626"} />
+                )}
+              </View>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                {activeApprovalModal?.action === "approve"
+                  ? "Approve Booking Request"
+                  : "Decline Booking Request"}
+              </Text>
+            </View>
+
             <Text
               style={[styles.modalSubtitle, { color: colors.textSecondary }]}
             >
-              {activeApprovalModal?.action === "approve"
-                ? `Approve booking for ${activeApprovalModal?.request.visitorName} on ${formatDateString(
-                    activeApprovalModal?.request.bookingDate || "",
-                  )}? The couple will have 24 hours to pay the advance.`
-                : `Are you sure you want to decline this booking request for ${activeApprovalModal?.request.visitorName}?`}
+              {activeApprovalModal?.action === "approve" ? (
+                <>
+                  Approving this request for{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                      color: colors.text,
+                    }}
+                  >
+                    {formatFullDate(
+                      activeApprovalModal?.request.bookingDate || "",
+                    )}
+                  </Text>{" "}
+                  will notify the couple and unlock a{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                      color: colors.text,
+                    }}
+                  >
+                    24-hour payment window
+                  </Text>{" "}
+                  for them to pay the advance.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to decline this request for{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                      color: colors.text,
+                    }}
+                  >
+                    {formatFullDate(
+                      activeApprovalModal?.request.bookingDate || "",
+                    )}
+                  </Text>
+                  ? The couple will be notified.
+                </>
+              )}
             </Text>
 
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-              Message to Couple (Optional):
+            <Text style={[styles.inputLabel, { color: colors.text }]}>
+              Message to Couple (Optional)
             </Text>
             <TextInput
               style={[
@@ -1426,8 +1903,8 @@ export default function ReservationsScreen() {
               ]}
               placeholder={
                 activeApprovalModal?.action === "approve"
-                  ? "e.g. Happy to accommodate you! Looking forward to meeting."
-                  : "e.g. Sorry, we are not available on this date."
+                  ? "e.g. We are excited to be part of your special day! Looking forward to your confirmation."
+                  : "e.g. Unfortunately we are unavailable on this date, but we have availability the following week."
               }
               placeholderTextColor={isDark ? "#64748B" : "#9CA3AF"}
               multiline
@@ -1458,19 +1935,25 @@ export default function ReservationsScreen() {
               <TouchableOpacity
                 style={[
                   styles.modalConfirmBtn,
-                  activeApprovalModal?.action === "reject" &&
-                    styles.modalRejectBtn,
+                  activeApprovalModal?.action === "reject"
+                    ? styles.modalRejectBtn
+                    : styles.modalApproveBtn,
                 ]}
                 onPress={handleConfirmApprovalAction}
                 disabled={actionLoading}
               >
                 {actionLoading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <View style={styles.btnContentRow}>
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <Text style={[styles.modalConfirmText, { marginLeft: 6 }]}>
+                      Processing...
+                    </Text>
+                  </View>
                 ) : (
                   <Text style={styles.modalConfirmText}>
                     {activeApprovalModal?.action === "approve"
-                      ? "Approve"
-                      : "Decline"}
+                      ? "Confirm Approval"
+                      : "Confirm Decline"}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1727,6 +2210,65 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 20,
   },
+  approvalsHeaderBlock: {
+    marginBottom: 4,
+  },
+  approvalsTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  approvalsTitle: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 20,
+    color: "#111827",
+  },
+  newBadge: {
+    backgroundColor: "#EA580C",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  newBadgeText: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  approvalsSubtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12.5,
+    color: "#6B7280",
+    marginTop: 2,
+    marginBottom: 12,
+  },
+  filterPillsContainer: {
+    flexDirection: "row",
+    backgroundColor: "#F1F5F9",
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    gap: 4,
+    marginBottom: 8,
+  },
+  filterPill: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+  },
+  filterPillActive: {
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  filterPillText: {
+    fontSize: 12,
+  },
   emptyApprovalsCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
@@ -1734,6 +2276,23 @@ const styles = StyleSheet.create({
     borderColor: "#E8EDF5",
     padding: 24,
     alignItems: "center",
+    marginTop: 8,
+  },
+  emptyIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 15,
+    color: "#111827",
+    marginBottom: 4,
+    textAlign: "center",
   },
   approvalCard: {
     backgroundColor: "#FFFFFF",
@@ -1754,6 +2313,52 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 8,
   },
+  requesterInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  avatarCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#FFEDD5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 16,
+    color: "#EA580C",
+  },
+  requesterTextCol: {
+    flex: 1,
+  },
+  approvalCoupleName: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 15,
+    color: "#111827",
+  },
+  contactItemsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 3,
+  },
+  contactItem: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  contactItemText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "#6B7280",
+  },
+  statusBadgeCol: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
   approvalPackageTitle: {
     fontFamily: "Outfit_700Bold",
     fontSize: 16,
@@ -1766,6 +2371,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
@@ -1804,6 +2411,91 @@ const styles = StyleSheet.create({
   badgeTextPurchased: {
     color: "#2563EB",
   },
+  countdownPillText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10.5,
+    color: "#059669",
+  },
+  packagePricingBox: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 10,
+    gap: 4,
+  },
+  packageRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  pricingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  packageBoxLabel: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    color: "#64748B",
+  },
+  packageBoxValue: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#0F172A",
+  },
+  eventDateBanner: {
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    marginTop: 10,
+  },
+  eventDateLabel: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.5,
+    color: "#1D4ED8",
+    marginBottom: 2,
+  },
+  eventDateContentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  eventDateText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#1E3A8A",
+  },
+  userNoteBox: {
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
+  },
+  noteHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 3,
+  },
+  userNoteLabel: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.5,
+    color: "#B45309",
+  },
+  userNoteText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "#78350F",
+    fontStyle: "italic",
+    lineHeight: 16,
+  },
   detailRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1835,9 +2527,25 @@ const styles = StyleSheet.create({
   },
   vendorResponseBox: {
     backgroundColor: "#EFF6FF",
-    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 10,
     padding: 10,
-    marginTop: 8,
+    marginTop: 10,
+  },
+  vendorResponseLabel: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.5,
+    color: "#1D4ED8",
+    marginBottom: 3,
+  },
+  vendorResponseText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "#1E3A8A",
+    fontStyle: "italic",
+    lineHeight: 16,
   },
   noteBoxLabel: {
     fontFamily: "Montserrat_600SemiBold",
@@ -1874,6 +2582,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
   },
   declineBtn: {
     backgroundColor: "#FEE2E2",
@@ -1886,7 +2595,7 @@ const styles = StyleSheet.create({
     color: "#DC2626",
   },
   approveBtn: {
-    backgroundColor: "#10B981",
+    backgroundColor: "#059669",
   },
   approveBtnText: {
     fontFamily: "Outfit_700Bold",
@@ -1911,12 +2620,40 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 5,
+    position: "relative",
+  },
+  modalCloseButton: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 10,
+    padding: 4,
+  },
+  modalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+    paddingRight: 28,
+  },
+  modalIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalIconBadgeApprove: {
+    backgroundColor: "#ECFDF5",
+  },
+  modalIconBadgeDecline: {
+    backgroundColor: "#FEF2F2",
   },
   modalTitle: {
     fontFamily: "Outfit_700Bold",
     fontSize: 18,
     color: "#111827",
-    marginBottom: 6,
+    flex: 1,
   },
   modalSubtitle: {
     fontFamily: "Montserrat_400Regular",
@@ -1964,12 +2701,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 10,
-    backgroundColor: "#10B981",
-    minWidth: 90,
+    minWidth: 130,
     alignItems: "center",
+    justifyContent: "center",
+  },
+  modalApproveBtn: {
+    backgroundColor: "#059669",
   },
   modalRejectBtn: {
     backgroundColor: "#DC2626",
+  },
+  btnContentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
   modalConfirmText: {
     fontFamily: "Outfit_700Bold",
