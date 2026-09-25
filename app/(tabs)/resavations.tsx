@@ -1968,7 +1968,7 @@ export default function ReservationsScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FFF8F3",
+    backgroundColor: "#FFEFEB",
   },
   container: {
     padding: 20,
@@ -1980,7 +1980,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    backgroundColor: "#FFF8F3",
+    backgroundColor: "#FFEFEB",
   },
   stateText: {
     marginTop: 10,

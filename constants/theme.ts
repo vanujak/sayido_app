@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 
 export const Colors = {
   light: {
-    background: "#FFF8F3",
+    background: "#FFEFEB",
     card: "#FFFFFF",
     cardElevated: "#FFFFFF",
     cardSubtle: "#FAFAFA",
@@ -28,7 +28,7 @@ export const Colors = {
     shimmerHighlight: "rgba(255, 255, 255, 0.75)",
   },
   dark: {
-    background: "#0F172A",
+    background: "#141211",
     card: "#1E293B",
     cardElevated: "#283548",
     cardSubtle: "#162032",

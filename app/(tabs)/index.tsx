@@ -689,7 +689,7 @@ export default function Dashboard() {
   } | null>(null);
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [timeframe, setTimeframe] = useState<Timeframe>("6M");
+  const [timeframe, setTimeframe] = useState<Timeframe>("30D");
   const [selectedViewsIndex, setSelectedViewsIndex] = useState<number | null>(null);
   const [selectedRevenueIndex, setSelectedRevenueIndex] = useState<number | null>(null);
   const isCompactScreen = width < 390;
@@ -701,13 +701,29 @@ export default function Dashboard() {
 
   const metricCardMinHeight = isShortScreen ? 86 : isTallScreen ? 106 : 96;
   const insightCardMinHeight = isShortScreen ? 84 : isTallScreen ? 100 : 92;
-  const chartCardHeight = isShortScreen ? 136 : isTallScreen ? 170 : 152;
-  const chartBarsHeight = isShortScreen ? 72 : isTallScreen ? 94 : 82;
-  const chartTrackHeight = isShortScreen ? 52 : isTallScreen ? 72 : 62;
-  const dynamicBottomPadding = Math.max(
-    2,
-    Math.min(16, Math.round((height - 720) * 0.1)),
-  );
+  const chartCardHeight = isShortScreen ? 140 : isTallScreen ? 174 : 156;
+  const chartBarsHeight = isShortScreen ? 76 : isTallScreen ? 98 : 86;
+  const chartTrackHeight = isShortScreen ? 56 : isTallScreen ? 76 : 66;
+
+  // Unified responsive vertical rhythm
+  const sectionSpacing = isShortScreen ? 7 : isTallScreen ? 13 : 10;
+  const cardRowGap = isShortScreen ? 6 : isTallScreen ? 10 : 8;
+
+  // Reclaim vertical space wasted on uneven gaps and provide generous, balanced bottom padding
+  const tabBarOffset = Platform.select({
+    ios: 76 + insets.bottom,
+    default: 0,
+  });
+  const baseBottomPadding = isShortScreen ? 16 : isTallScreen ? 34 : 26;
+  const dynamicBottomPadding =
+    tabBarOffset +
+    Math.max(
+      baseBottomPadding,
+      Math.min(
+        54,
+        Math.round(baseBottomPadding + Math.max(0, height - 780) * 0.12),
+      ),
+    );
 
   // Handle phone hardware back button on root dashboard
   useFocusEffect(
@@ -1533,12 +1549,12 @@ export default function Dashboard() {
         contentContainerStyle={[
           styles.container,
           {
-            paddingTop: Platform.OS === "web" ? 14 : Math.min(insets.top, 6),
+            paddingTop:
+              Platform.OS === "web" ? 14 : Math.max(4, Math.min(insets.top, 10)),
             paddingBottom: dynamicBottomPadding,
           },
-          isShortScreen && styles.containerShort,
         ]}
-        scrollEnabled={height < 640}
+        scrollEnabled={height < 660}
         showsVerticalScrollIndicator={false}
         bounces={false}
         refreshControl={
@@ -1550,7 +1566,7 @@ export default function Dashboard() {
           />
         }
       >
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, { marginBottom: sectionSpacing }]}>
           <View style={styles.headerTitleContainer}>
             <View
               style={[
@@ -1604,10 +1620,11 @@ export default function Dashboard() {
           style={[
             styles.timeframeContainer,
             {
+              marginBottom: sectionSpacing,
               backgroundColor: isDark
-                ? "rgba(255, 255, 255, 0.05)"
+                ? "rgba(255, 255, 255, 0.07)"
                 : "#F1F5F9",
-              borderColor: colors.border,
+              borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "#E2E8F0",
             },
           ]}
         >
@@ -1618,10 +1635,14 @@ export default function Dashboard() {
                 key={tf}
                 style={[
                   styles.timeframeButton,
+                  { paddingVertical: isShortScreen ? 7 : 9 },
                   isActive && [
                     styles.timeframeButtonActive,
                     {
                       backgroundColor: colors.card,
+                      borderColor: isDark
+                        ? "rgba(255, 255, 255, 0.15)"
+                        : "#E2E8F0",
                       shadowColor: isDark ? "#000000" : "#0F172A",
                     },
                   ],
@@ -1642,10 +1663,14 @@ export default function Dashboard() {
                   style={[
                     styles.timeframeButtonText,
                     {
-                      color: isActive ? colors.primary : colors.textMuted,
+                      color: isActive
+                        ? colors.primary
+                        : isDark
+                          ? "#94A3B8"
+                          : "#64748B",
                       fontFamily: isActive
-                        ? "Montserrat_600SemiBold"
-                        : "Montserrat_500Medium",
+                        ? "Outfit_700Bold"
+                        : "Montserrat_600SemiBold",
                     },
                   ]}
                 >
@@ -1656,8 +1681,8 @@ export default function Dashboard() {
           })}
         </View>
 
-        <View style={styles.metricGrid}>
-          {metricCards.map((card) => {
+        <View style={[styles.metricGrid, { marginBottom: sectionSpacing }]}>
+          {metricCards.map((card, idx) => {
             const Icon = card.icon;
             const isRevenueCard = card.key === "revenue";
             const revenueAmount = totalRevenue.toLocaleString(undefined, {
@@ -1672,6 +1697,7 @@ export default function Dashboard() {
                   {
                     width: metricCardWidth,
                     minHeight: metricCardMinHeight,
+                    marginBottom: idx < 2 ? cardRowGap : 0,
                     backgroundColor: colors.card,
                     borderColor: colors.border,
                   },
@@ -1771,7 +1797,7 @@ export default function Dashboard() {
           })}
         </View>
 
-        <View style={styles.insightRow}>
+        <View style={[styles.insightRow, { marginBottom: sectionSpacing }]}>
           <View
             style={[
               styles.insightCard,
@@ -1837,7 +1863,7 @@ export default function Dashboard() {
           </View>
         </View>
 
-        <View style={styles.chartGrid}>
+        <View style={[styles.chartGrid, { marginTop: 0, marginBottom: 0 }]}>
           <View
             style={[
               styles.chartCard,
@@ -1902,7 +1928,12 @@ export default function Dashboard() {
                           backgroundColor: isDark
                             ? "rgba(255, 255, 255, 0.08)"
                             : "#EEF2F7",
-                          width: timeframe === "1Y" ? 11 : 18,
+                          width:
+                            timeframe === "1Y"
+                              ? 11
+                              : timeframe === "30D"
+                                ? 22
+                                : 18,
                           height: chartTrackHeight,
                         },
                         isSelected && {
@@ -2014,7 +2045,12 @@ export default function Dashboard() {
                           backgroundColor: isDark
                             ? "rgba(255, 255, 255, 0.08)"
                             : "#EEF2F7",
-                          width: timeframe === "1Y" ? 11 : 18,
+                          width:
+                            timeframe === "1Y"
+                              ? 11
+                              : timeframe === "30D"
+                                ? 22
+                                : 18,
                           height: chartTrackHeight,
                         },
                         isSelected && {
@@ -2323,7 +2359,7 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FFF8F3",
+    backgroundColor: "#FFEFEB",
   },
   scrollView: {
     flex: 1,
@@ -2331,16 +2367,14 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     paddingHorizontal: 16,
-    justifyContent: "space-between",
   },
   containerShort: {
-    paddingBottom: 2,
+    paddingBottom: 12,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 3,
     zIndex: 10,
   },
   headerTitleContainer: {
@@ -2432,36 +2466,36 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "#F1F5F9",
-    borderRadius: 10,
-    padding: 2,
-    marginBottom: 4,
+    borderRadius: 12,
+    padding: 3,
     borderWidth: 1,
     borderColor: "transparent",
   },
   timeframeButton: {
     flex: 1,
-    paddingVertical: 4,
+    paddingVertical: 8,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
+    borderRadius: 9,
   },
   timeframeButtonActive: {
     backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 2.5,
   },
   timeframeButtonText: {
-    fontSize: 11,
+    fontSize: 12.5,
     letterSpacing: 0.2,
   },
   metricGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginBottom: 6,
   },
   metricCard: {
     width: "48.6%",
@@ -2473,7 +2507,6 @@ const styles = StyleSheet.create({
     borderColor: "#E8EDF5",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 6,
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
@@ -2552,7 +2585,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 8,
-    marginBottom: 6,
   },
   insightHeader: {
     width: "100%",
@@ -2602,8 +2634,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 8,
-    marginTop: 2,
-    marginBottom: 0,
   },
   chartCard: {
     width: "48.6%",
@@ -2682,7 +2712,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    backgroundColor: "#FFF8F3",
+    backgroundColor: "#FFEFEB",
   },
   stateText: {
     marginTop: 10,
