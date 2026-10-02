@@ -1,4 +1,4 @@
-﻿import { apiBaseUrl, apiCredentials, graphQlUrl } from "./api-config";
+import { apiBaseUrl, apiCredentials, graphQlUrl } from "./api-config";
 import { setVendorSession } from "./vendor-session";
 
 export interface GoogleAuthResponse {
@@ -63,20 +63,24 @@ const resolveVendorIdByEmail = async (targetEmail: string): Promise<string> => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         query: `
-          query FindVendorByEmailForGoogleAuth($email: String!) {
-            findVendorByEmail(email: $email) {
+          query FindAllVendorsForGoogleAuth {
+            findAllVendors {
               id
               email
             }
           }
         `,
-        variables: { email: targetEmail.trim() },
       }),
     });
 
     const payload = await response.json();
     if (!response.ok || payload?.errors?.length) return "";
-    const vendor = payload?.data?.findVendorByEmail;
+    const list = payload?.data?.findAllVendors || [];
+    const normalized = targetEmail.trim().toLowerCase();
+    const vendor = list.find(
+      (v: { id?: string; email?: string }) =>
+        v.email && v.email.toLowerCase() === normalized
+    );
     return typeof vendor?.id === "string" ? vendor.id : "";
   } catch {
     return "";

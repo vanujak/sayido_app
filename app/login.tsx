@@ -78,6 +78,13 @@ type VendorsLookupResponse = {
       lname?: string;
       profile_pic_url?: string;
     } | null;
+    findAllVendors?: Array<{
+      id?: string;
+      email?: string;
+      fname?: string;
+      lname?: string;
+      profile_pic_url?: string;
+    }>;
   };
   errors?: Array<{
     message?: string;
@@ -158,8 +165,8 @@ export default function LoginScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: `
-            query FindVendorPreview($email: String!) {
-              findVendorByEmail(email: $email) {
+            query FindAllVendorsForPreview {
+              findAllVendors {
                 id
                 email
                 fname
@@ -168,11 +175,15 @@ export default function LoginScreen() {
               }
             }
           `,
-          variables: { email: targetEmail.trim() },
         }),
       });
       const payload = (await response.json()) as VendorsLookupResponse;
-      const v = payload.data?.findVendorByEmail;
+      const targetNormalized = targetEmail.trim().toLowerCase();
+      const v =
+        payload.data?.findVendorByEmail ||
+        payload.data?.findAllVendors?.find(
+          (item) => item.email && item.email.toLowerCase() === targetNormalized
+        );
       if (v) {
         const name = `${v.fname || ""} ${v.lname || ""}`.trim();
         const pic = v.profile_pic_url || "";
@@ -470,8 +481,8 @@ export default function LoginScreen() {
         },
         body: JSON.stringify({
           query: `
-            query FindVendorByEmailForLogin($email: String!) {
-              findVendorByEmail(email: $email) {
+            query FindAllVendorsForLogin {
+              findAllVendors {
                 id
                 email
                 fname
@@ -480,14 +491,18 @@ export default function LoginScreen() {
               }
             }
           `,
-          variables: { email: targetEmail.trim() },
         }),
       });
 
       const payload = (await response.json()) as VendorsLookupResponse;
       if (!response.ok || payload.errors?.length) return "";
 
-      const vendor = payload.data?.findVendorByEmail;
+      const targetNormalized = targetEmail.trim().toLowerCase();
+      const vendor =
+        payload.data?.findVendorByEmail ||
+        payload.data?.findAllVendors?.find(
+          (item) => item.email && item.email.toLowerCase() === targetNormalized
+        );
       if (vendor) {
         const name = `${vendor.fname || ""} ${vendor.lname || ""}`.trim();
         const pic = vendor.profile_pic_url || "";

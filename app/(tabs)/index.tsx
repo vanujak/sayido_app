@@ -231,20 +231,23 @@ const loadVendorIdByEmail = async (email: string): Promise<string> => {
   if (!email.trim()) return "";
 
   const data = await graphQlRequest<{
-    findVendorByEmail?: { id?: string; email?: string } | null;
+    findAllVendors?: Array<{ id?: string; email?: string }> | null;
   }>(
     `
-      query FindVendorByEmailForLookup($email: String!) {
-        findVendorByEmail(email: $email) {
+      query FindAllVendorsForDashboardLookup {
+        findAllVendors {
           id
           email
         }
       }
     `,
-    { email: email.trim() },
+    {},
   );
 
-  return toText(data.findVendorByEmail?.id);
+  const list = data.findAllVendors || [];
+  const normalized = email.trim().toLowerCase();
+  const match = list.find((v) => v.email && v.email.trim().toLowerCase() === normalized);
+  return toText(match?.id);
 };
 
 const loadVendorProfile = async (

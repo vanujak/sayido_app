@@ -1,5 +1,10 @@
 import { apiCredentials, graphQlUrl } from "@/lib/api-config";
-import { clearVendorSession, getVendorSession, setVendorSession } from "@/lib/vendor-session";
+import {
+  clearVendorSession,
+  getVendorSession,
+  initVendorSessionAsync,
+  setVendorSession,
+} from "@/lib/vendor-session";
 import {
   authenticateWithBiometricsAsync,
   checkBiometricsSupportAsync,
@@ -12,6 +17,7 @@ import { useFocusEffect, useGlobalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Image,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -28,7 +34,6 @@ type VendorApiData = {
   busname?: string;
   phone?: string;
   city?: string;
-  location?: string;
   about?: string;
   profile_pic_url?: string;
 };
@@ -66,6 +71,7 @@ export default function ProfileScreen() {
 
   const [profile, setProfile] = useState<Partial<VendorProfile> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   const [biometricsOn, setBiometricsOn] = useState(isBiometricsEnabled());
@@ -101,7 +107,11 @@ export default function ProfileScreen() {
       return;
     }
 
-    const session = getVendorSession();
+    let session = getVendorSession();
+    if (!session.vendorId && !session.email) {
+      session = await initVendorSessionAsync();
+    }
+
     const vendorId =
       (typeof params.vendor_id === "string" && params.vendor_id) ||
       (typeof params.vendorId === "string" && params.vendorId) ||
@@ -134,7 +144,6 @@ export default function ProfileScreen() {
                   busname
                   phone
                   city
-                  location
                   about
                   profile_pic_url
                 }
@@ -146,6 +155,7 @@ export default function ProfileScreen() {
 
         const json = (await res.json()) as {
           data?: { findVendorById?: VendorApiData };
+          errors?: Array<{ message: string }>;
         };
         if (json.data?.findVendorById) {
           const v = json.data.findVendorById;
@@ -156,7 +166,7 @@ export default function ProfileScreen() {
             busname: v.busname || "",
             phone: v.phone || "",
             city: v.city || "",
-            location: v.location || "",
+            location: v.city || "",
             about: v.about || "",
             profilePicUrl: v.profile_pic_url || "",
           });
@@ -172,56 +182,58 @@ export default function ProfileScreen() {
       }
 
       // 2. Fallback: fetch all vendors and find by email
-      const targetEmail = (vendorEmail || "test@gmail.com").trim().toLowerCase();
-      const allRes = await fetch(graphQlUrl, {
-        method: "POST",
-        credentials: apiCredentials,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: `
-            query GetAllVendorsForProfile {
-              findAllVendors {
-                id
-                email
-                fname
-                lname
-                busname
-                phone
-                city
-                location
-                about
-                profile_pic_url
+      const targetEmail = (vendorEmail || session.email || "").trim().toLowerCase();
+      if (targetEmail) {
+        const allRes = await fetch(graphQlUrl, {
+          method: "POST",
+          credentials: apiCredentials,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: `
+              query GetAllVendorsForProfile {
+                findAllVendors {
+                  id
+                  email
+                  fname
+                  lname
+                  busname
+                  phone
+                  city
+                  about
+                  profile_pic_url
+                }
               }
-            }
-          `,
-        }),
-      });
-      const allJson = (await allRes.json()) as {
-        data?: { findAllVendors?: Array<VendorApiData> };
-      };
-      const list = allJson.data?.findAllVendors || [];
-      const matched =
-        list.find((item) => item.email && item.email.toLowerCase() === targetEmail) ||
-        list[0];
-      if (matched) {
-        setProfile({
-          fname: matched.fname || "",
-          lname: matched.lname || "",
-          email: matched.email || "",
-          busname: matched.busname || "",
-          phone: matched.phone || "",
-          city: matched.city || "",
-          location: matched.location || "",
-          about: matched.about || "",
-          profilePicUrl: matched.profile_pic_url || "",
+            `,
+          }),
         });
-        setImageError(false);
-        setVendorSession({
-          vendorId: matched.id,
-          email: matched.email,
-          name: `${matched.fname || ""} ${matched.lname || ""}`.trim(),
-          profilePicUrl: matched.profile_pic_url || "",
-        });
+        const allJson = (await allRes.json()) as {
+          data?: { findAllVendors?: Array<VendorApiData> };
+          errors?: Array<{ message: string }>;
+        };
+        const list = allJson.data?.findAllVendors || [];
+        const matched = list.find(
+          (item) => item.email && item.email.toLowerCase() === targetEmail
+        );
+        if (matched) {
+          setProfile({
+            fname: matched.fname || "",
+            lname: matched.lname || "",
+            email: matched.email || "",
+            busname: matched.busname || "",
+            phone: matched.phone || "",
+            city: matched.city || "",
+            location: matched.city || "",
+            about: matched.about || "",
+            profilePicUrl: matched.profile_pic_url || "",
+          });
+          setImageError(false);
+          setVendorSession({
+            vendorId: matched.id,
+            email: matched.email,
+            name: `${matched.fname || ""} ${matched.lname || ""}`.trim(),
+            profilePicUrl: matched.profile_pic_url || "",
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to load vendor profile:", err);
@@ -240,26 +252,41 @@ export default function ProfileScreen() {
     }, [loadProfile])
   );
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadProfile();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadProfile]);
+
   const session = getVendorSession();
+  const sessionNameParts = (session.name || "").trim().split(/\s+/).filter(Boolean);
+  const sessionFname = sessionNameParts[0] || "";
+  const sessionLname = sessionNameParts.slice(1).join(" ") || "";
+
   const vendor: VendorProfile = {
-    fname: profile?.fname || String(params.fname ?? "Vendor"),
-    lname: profile?.lname || String(params.lname ?? ""),
-    email: profile?.email || String(params.email ?? session.email ?? "test@gmail.com"),
-    busname: profile?.busname || String(params.busname ?? "Test Vendor"),
+    fname: profile?.fname || String(params.fname ?? sessionFname ?? ""),
+    lname: profile?.lname || String(params.lname ?? sessionLname ?? ""),
+    email: profile?.email || String(params.email ?? params.vendor_email ?? session.email ?? ""),
+    busname: profile?.busname || String(params.busname ?? ""),
     phone: profile?.phone || String(params.phone ?? ""),
     city: profile?.city || String(params.city ?? ""),
-    location: profile?.location || String(params.location ?? ""),
-    about:
-      profile?.about ||
-      String(
-        params.about ??
-          "Professional wedding vendor focused on quality service and reliable communication."
-      ),
-    profilePicUrl: profile?.profilePicUrl || String(params.profile_pic_url ?? ""),
+    location: profile?.location || profile?.city || String(params.location ?? params.city ?? ""),
+    about: profile?.about || String(params.about ?? ""),
+    profilePicUrl: profile?.profilePicUrl || session.profilePicUrl || String(params.profile_pic_url ?? ""),
   };
 
-  const fullName = `${vendor.fname} ${vendor.lname}`.trim();
-  const initials = `${vendor.fname.charAt(0)}${vendor.lname.charAt(0)}`.toUpperCase();
+  const fullName = `${vendor.fname} ${vendor.lname}`.trim() || vendor.busname || "Vendor";
+  const initials = (() => {
+    if (vendor.fname && vendor.lname) {
+      return `${vendor.fname.charAt(0)}${vendor.lname.charAt(0)}`.toUpperCase();
+    }
+    if (vendor.fname) return vendor.fname.slice(0, 2).toUpperCase();
+    if (vendor.busname) return vendor.busname.slice(0, 2).toUpperCase();
+    return "V";
+  })();
 
   const handleLogout = () => {
     clearVendorSession(true);
@@ -277,6 +304,14 @@ export default function ProfileScreen() {
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
         <View style={[styles.headerCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.avatarRing, { backgroundColor: colors.primaryLight }]}>
@@ -294,8 +329,12 @@ export default function ProfileScreen() {
             )}
           </View>
           <Text style={[styles.name, { color: colors.text }]}>{fullName}</Text>
-          <Text style={[styles.business, { color: colors.primary }]}>{vendor.busname}</Text>
-          <Text style={[styles.email, { color: colors.textSecondary }]}>{vendor.email}</Text>
+          {vendor.busname ? (
+            <Text style={[styles.business, { color: colors.primary }]}>{vendor.busname}</Text>
+          ) : null}
+          {vendor.email ? (
+            <Text style={[styles.email, { color: colors.textSecondary }]}>{vendor.email}</Text>
+          ) : null}
         </View>
 
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -326,7 +365,9 @@ export default function ProfileScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Contact</Text>
           <InfoRow label="Phone" value={vendor.phone || "Not specified"} colors={colors} />
           <InfoRow label="City" value={vendor.city || "Not specified"} colors={colors} />
-          <InfoRow label="Location" value={vendor.location || "Not specified"} colors={colors} />
+          {vendor.location && vendor.location !== vendor.city ? (
+            <InfoRow label="Location" value={vendor.location} colors={colors} />
+          ) : null}
         </View>
 
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
